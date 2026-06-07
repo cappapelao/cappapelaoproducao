@@ -201,24 +201,52 @@ td.sem-prod{color:var(--text3);}
   <!-- IMPORTAR -->
   <div class="page" id="page-importar">
     <div class="import-hero">
-      <!-- estado: aguardando arquivo -->
-      <div class="import-box" id="import-waiting">
-        <h2>Importar dados</h2>
-        <p>Selecione o arquivo Excel exportado do sistema para carregar os dados de produção.</p>
-        <div class="upload-zone" id="upload-zone"
-          onclick="document.getElementById('file-input').click()"
-          ondragover="event.preventDefault();this.classList.add('drag')"
-          ondragleave="this.classList.remove('drag')"
-          ondrop="handleDrop(event)">
-          <svg width="44" height="44" viewBox="0 0 40 40" fill="none" style="margin:0 auto 14px;display:block;color:var(--text3)">
-            <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-          <p style="font-size:15px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
-          <p style="font-size:12px;margin-top:8px;color:var(--text3)">Suporta .xlsx e .xls</p>
+
+      <!-- STATUS DO SERVIDOR -->
+      <div class="import-box" style="max-width:520px;width:100%">
+        <h2>Fonte de dados</h2>
+        <p style="color:var(--text2);font-size:14px;margin-bottom:20px">O sistema tenta conectar ao servidor local automaticamente. Se não estiver disponível, importe o arquivo manualmente.</p>
+
+        <!-- Card servidor -->
+        <div id="server-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:600">Servidor local</span>
+            <span id="server-status-badge" style="font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(110,118,129,.2);color:var(--text3)">Verificando...</span>
+          </div>
+          <div id="server-info" style="font-size:12px;color:var(--text3);line-height:1.8">
+            Conectando em <code style="color:var(--accent)">http://localhost:3000</code>...
+          </div>
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
+            <button onclick="forcarAtualizacaoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2)">⟳ Reler Excel no servidor</button>
+          </div>
+        </div>
+
+        <!-- Divisor -->
+        <div style="display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--text3);font-size:12px">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          ou importe manualmente
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+
+        <!-- Upload manual -->
+        <div id="import-waiting">
+          <div class="upload-zone" id="upload-zone"
+            onclick="document.getElementById('file-input').click()"
+            ondragover="event.preventDefault();this.classList.add('drag')"
+            ondragleave="this.classList.remove('drag')"
+            ondrop="handleDrop(event)">
+            <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
+              <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
+            <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .xlsx e .xls</p>
+          </div>
         </div>
       </div>
-      <!-- estado: arquivo carregado -->
+
+      <!-- Estado: dados carregados -->
       <div class="file-loaded" id="file-loaded">
         <div class="file-loaded-row">
           <span class="file-dot"></span>
@@ -227,7 +255,7 @@ td.sem-prod{color:var(--text3);}
             <div class="file-loaded-sub" id="file-stats"></div>
           </div>
         </div>
-        <button class="btn-reimport" onclick="resetImport()">↩ Importar outro arquivo</button>
+        <button class="btn-reimport" onclick="resetImport()">↩ Trocar fonte de dados</button>
       </div>
       <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(this.files[0])"/>
     </div>
@@ -332,12 +360,146 @@ function doLogin(){
     document.getElementById('m-ano').value=new Date().getFullYear();
     renderMetaList();
     goPage('importar');
+    // tenta conectar ao Supabase automaticamente
+    setTimeout(async ()=>{
+      const online = await verificarSupabase();
+      if(online) buscarDoServidor();
+    }, 500);
   } else {
     document.getElementById('login-err').style.display='block';
   }
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 function doLogout(){location.reload();}
+
+// ===== SUPABASE =====
+const SB_URL = 'https://ugfqbjpfpgfukeshiefy.supabase.co/rest/v1';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnZnFianBmcGdmdWtlc2hpZWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTgxMTQsImV4cCI6MjA5NjM5NDExNH0.T4HxLDUu2c9VWOu5hcp9SFMXqRzJntGoL_-K2YwOxX4';
+const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
+let autoRefreshTimer = null;
+
+async function sbFetch(tabela, params=''){
+  const r = await fetch(`${SB_URL}/${tabela}?${params}`, { headers: SB_HEADERS });
+  if(!r.ok) throw new Error(`Supabase erro ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function verificarSupabase(){
+  const badge = document.getElementById('server-status-badge');
+  const info  = document.getElementById('server-info');
+  try {
+    // pega só 1 registro para testar conexão e contar total
+    const [row] = await sbFetch('producao', 'select=data&limit=1&order=data.desc');
+    const countR = await fetch(`${SB_URL}/producao?select=id`, {
+      headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' }
+    });
+    const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
+    const ultimaData = row?.data ? new Date(row.data).toLocaleDateString('pt-BR') : '—';
+
+    if(badge){ badge.textContent='● Conectado'; badge.style.background='rgba(63,185,80,.15)'; badge.style.color='var(--green)'; }
+    if(info) info.innerHTML=`<b>Banco:</b> Supabase (nuvem)<br><b>Registros:</b> ${total.toLocaleString('pt-BR')}<br><b>Dado mais recente:</b> ${ultimaData}<br><b>Atualização:</b> automática a cada 1h pelo sincronizador`;
+    return true;
+  } catch(e){
+    if(badge){ badge.textContent='● Sem conexão'; badge.style.background='rgba(248,81,73,.15)'; badge.style.color='var(--red)'; }
+    if(info) info.innerHTML=`Não foi possível conectar ao Supabase.<br><span style="color:var(--text3)">Verifique sua conexão com a internet, ou importe manualmente abaixo.</span>`;
+    return false;
+  }
+}
+
+async function buscarDoServidor(){
+  const ok = await verificarSupabase();
+  if(!ok) return;
+  try {
+    toast('Carregando dados...','success');
+
+    // busca todos os registros em lotes de 1000 (limite do Supabase)
+    let todos = [], from = 0, tam = 1000;
+    while(true){
+      const lote = await sbFetch('producao',
+        `select=data,kg,processo,maquina,produto&order=data.asc&limit=${tam}&offset=${from}`);
+      todos = todos.concat(lote);
+      if(lote.length < tam) break;
+      from += tam;
+    }
+
+    if(todos.length === 0){ toast('Sem dados no Supabase. Rode o sincronizador.','error'); return; }
+
+    // normaliza para o formato interno do dashboard
+    rawData = todos.map(r=>({
+      date: r.data,
+      kg:   parseFloat(r.kg),
+      proc: r.processo || '',
+      maq:  r.maquina  || '',
+      produto: r.produto || ''
+    }));
+
+    carregarMetasSupabase();
+    popularFiltros();
+
+    document.getElementById('import-waiting').style.display='none';
+    document.getElementById('file-loaded').style.display='flex';
+    document.getElementById('file-name').textContent='☁️ Supabase — atualização automática';
+    const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+    document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anos.join(', ')}`;
+    document.getElementById('no-data-msg').style.display='none';
+    document.getElementById('dashboard-content').style.display='block';
+    renderTable();
+    toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!`,'success');
+
+    // auto-refresh a cada 60 min
+    if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
+  } catch(e){ toast('Erro: '+e.message,'error'); }
+}
+
+async function carregarMetasSupabase(){
+  try {
+    const rows = await sbFetch('metas','select=*');
+    rows.forEach(m=>{
+      const key = m.processo
+        ? `${m.ano}-${String(m.mes).padStart(2,'0')}|${m.processo}`
+        : `${m.ano}-${String(m.mes).padStart(2,'0')}`;
+      metas[key] = { meta: parseFloat(m.meta_kg), dias: m.dias_uteis, proc: m.processo||'' };
+    });
+    renderMetaList();
+  } catch(e){ console.warn('Metas Supabase erro:', e); }
+}
+
+async function salvarMetaSupabase(ano, mes, proc, meta_kg, dias_uteis){
+  try {
+    const r = await fetch(`${SB_URL}/metas`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
+      body: JSON.stringify({ ano:parseInt(ano), mes:parseInt(mes), processo:proc||'', meta_kg, dias_uteis })
+    });
+    if(!r.ok) throw new Error(await r.text());
+  } catch(e){ console.warn('Erro ao salvar meta no Supabase:', e); }
+}
+
+async function deletarMetaSupabase(ano, mes, proc){
+  try {
+    await fetch(`${SB_URL}/metas?ano=eq.${ano}&mes=eq.${mes}&processo=eq.${encodeURIComponent(proc||'')}`, {
+      method: 'DELETE', headers: SB_HEADERS
+    });
+  } catch(e){ console.warn('Erro ao deletar meta:', e); }
+}
+
+function forcarAtualizacaoServidor(){
+  toast('Atualizando do Supabase...','success');
+  buscarDoServidor();
+}
+
+function popularFiltros(){
+  const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const selAno=document.getElementById('sel-ano');
+  if(selAno){ selAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); selAno.value=anos[anos.length-1]; }
+  allProcessos=[...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
+  const procOpts='<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
+  const selProc=document.getElementById('sel-proc');
+  if(selProc) selProc.innerHTML=procOpts;
+  const mProc=document.getElementById('m-proc');
+  if(mProc) mProc.innerHTML='<option value="">— Todos os processos (geral) —</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
+}
 
 // ===== NAV =====
 const PAGES=['importar','dashboard','graficos','metas'];
@@ -787,10 +949,20 @@ function salvarMeta(){
   const key=proc?`${ano}-${String(mes).padStart(2,'0')}|${proc}`:`${ano}-${String(mes).padStart(2,'0')}`;
   metas[key]={meta:val,dias,proc};
   saveMetas();
+  salvarMetaSupabase(ano, mes, proc, val, dias);
   renderMetaList();
   toast('Meta salva!','success');
 }
-function deleteMeta(key){delete metas[key];saveMetas();renderMetaList();toast('Meta removida.','success');}
+function deleteMeta(key){
+  const base=key.split('|')[0];
+  const[y,m]=base.split('-');
+  const proc=metas[key]?.proc||'';
+  delete metas[key];
+  saveMetas();
+  deletarMetaSupabase(y, m, proc);
+  renderMetaList();
+  toast('Meta removida.','success');
+}
 function renderMetaList(){
   const keys=Object.keys(metas).sort().reverse();
   if(keys.length===0){document.getElementById('meta-list').innerHTML='';return;}
