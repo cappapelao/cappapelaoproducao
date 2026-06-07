@@ -56,6 +56,7 @@ nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;d
 .import-box p{font-size:14px;color:var(--text2);margin-bottom:24px;}
 .upload-zone{border:2px dashed var(--border);border-radius:14px;padding:48px 24px;text-align:center;cursor:pointer;transition:all .2s;}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(88,166,255,.05);}
+@keyframes spin{to{transform:rotate(360deg);}}
 .upload-zone p{color:var(--text2);font-size:14px;}
 .upload-zone strong{color:var(--accent);}
 #file-input{display:none;}
@@ -410,9 +411,15 @@ async function buscarDoServidor(){
   const ok = await verificarSupabase();
   if(!ok) return;
   try {
-    toast('Carregando dados...','success');
+    // mostra estado "carregando" na zona de upload sem esconder ela
+    const zone = document.getElementById('upload-zone');
+    if(zone) zone.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0">
+        <div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
+        <p style="font-size:14px;color:var(--text2)">Carregando dados do Supabase...</p>
+      </div>`;
 
-    // busca todos os registros em lotes de 1000 (limite do Supabase)
+    // busca todos os registros em lotes de 1000
     let todos = [], from = 0, tam = 1000;
     while(true){
       const lote = await sbFetch('producao',
@@ -422,7 +429,18 @@ async function buscarDoServidor(){
       from += tam;
     }
 
-    if(todos.length === 0){ toast('Sem dados no Supabase. Rode o sincronizador.','error'); return; }
+    if(todos.length === 0){
+      // sem dados — restaura zona de upload normal
+      if(zone) zone.innerHTML = `
+        <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
+          <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
+        <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .xlsx e .xls</p>`;
+      toast('Supabase conectado mas sem dados. Rode o sincronizador ou importe manualmente.','error');
+      return;
+    }
 
     // normaliza para o formato interno do dashboard
     rawData = todos.map(r=>({
@@ -436,6 +454,7 @@ async function buscarDoServidor(){
     carregarMetasSupabase();
     popularFiltros();
 
+    // SÓ AGORA esconde o import e mostra o estado carregado
     document.getElementById('import-waiting').style.display='none';
     document.getElementById('file-loaded').style.display='flex';
     document.getElementById('file-name').textContent='☁️ Supabase — atualização automática';
@@ -449,7 +468,18 @@ async function buscarDoServidor(){
     // auto-refresh a cada 60 min
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
-  } catch(e){ toast('Erro: '+e.message,'error'); }
+  } catch(e){
+    // erro — restaura zona de upload
+    const zone = document.getElementById('upload-zone');
+    if(zone) zone.innerHTML = `
+      <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
+        <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
+      <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .xlsx e .xls</p>`;
+    toast('Erro ao carregar: '+e.message,'error');
+  }
 }
 
 async function carregarMetasSupabase(){
