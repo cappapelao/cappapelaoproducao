@@ -173,10 +173,10 @@ td.sem-prod{color:var(--text3);}
       <p style="margin-top:6px">Dashboard de Produção</p>
     </div>
     <div class="field"><label>Usuário</label><input type="text" id="usr" placeholder="Digite seu usuário"/></div>
-    <div class="field"><label>Senha</label><input type="password" id="pwd" placeholder="••••••••"/></div>
+    <div class="field"><label>Senha</label><div style="position:relative"><input type="password" id="pwd" placeholder="••••••••" style="padding-right:40px"/><button type="button" onclick="togglePwd()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;line-height:1" id="pwd-eye">👁</button></div></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><input type="checkbox" id="remember-me" style="width:16px;height:16px;cursor:pointer"/><label for="remember-me" style="font-size:13px;color:var(--text2);cursor:pointer">Lembrar senha</label></div>
     <button class="btn-primary" onclick="doLogin()">Entrar</button>
     <p class="login-error" id="login-err">Usuário ou senha incorretos.</p>
-    <p style="text-align:center;font-size:12px;color:var(--text3);margin-top:20px;">admin / 1234</p>
   </div>
 </div>
 
@@ -297,6 +297,9 @@ td.sem-prod{color:var(--text3);}
       </div>
       <div id="cards-container"></div>
       <div id="table-container"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="imprimirRelatorio('dashboard')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
+      </div>
     </div>
   </div>
 
@@ -332,6 +335,9 @@ td.sem-prod{color:var(--text3);}
       </div>
       <div id="q-cards"></div>
       <div id="q-table"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="imprimirRelatorio('qualidade')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
+      </div>
     </div>
   </div>
 
@@ -353,8 +359,7 @@ td.sem-prod{color:var(--text3);}
       <div id="g-cards" style="margin-bottom:20px"></div>
       <div class="section-title">Produção Mensal — Qualidade (Inspeção) vs Planejado</div>
       <div class="chart-box" style="margin-bottom:20px"><canvas id="g-chart-bar"></canvas></div>
-      <div class="section-title">Acumulado Jan → Dez</div>
-      <div class="chart-box"><canvas id="g-chart-line"></canvas></div>
+
     </div>
   </div>
   <div class="page" id="page-graficos">
@@ -409,7 +414,7 @@ td.sem-prod{color:var(--text3);}
 <script>
 // ===== AUTH =====
 // perfil: admin/producao = acesso total | dir = só dashboard/qualidade/global
-const USERS={admin:'1234',producao:'prod2025',dir:'p@pel@0_26'};
+const USERS={admin:'P4p3l@o_2026',producao:'prod2025',dir:'p@pel@0_26'};
 const ROLE={admin:'full',producao:'full',dir:'view'};
 let currentRole='full';
 
@@ -418,10 +423,28 @@ const savedFilters={};
 function saveFilter(page, key, val){ if(!savedFilters[page]) savedFilters[page]={}; savedFilters[page][key]=val; }
 function loadFilter(page, key){ return savedFilters[page]?.[key]||''; }
 
+function togglePwd(){
+  const inp=document.getElementById('pwd');
+  const eye=document.getElementById('pwd-eye');
+  if(inp.type==='password'){inp.type='text';eye.textContent='🙈';}
+  else{inp.type='password';eye.textContent='👁';}
+}
+
+// Carrega credenciais salvas
+(function(){
+  const saved=localStorage.getItem('dash_remember');
+  if(saved){const d=JSON.parse(saved);document.getElementById('usr').value=d.u||'';document.getElementById('pwd').value=d.p||'';document.getElementById('remember-me').checked=true;}
+})();
+
 function doLogin(){
   const u=document.getElementById('usr').value.trim();
   const p=document.getElementById('pwd').value;
   if(USERS[u]===p){
+    if(document.getElementById('remember-me').checked){
+      localStorage.setItem('dash_remember',JSON.stringify({u,p}));
+    } else {
+      localStorage.removeItem('dash_remember');
+    }
     currentRole=ROLE[u]||'full';
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='flex';
@@ -448,6 +471,69 @@ function doLogin(){
   }
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
+function imprimirRelatorio(origem){
+  const logoSrc=document.querySelector('.login-logo img')?.src||'';
+  const dataEmissao=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  let conteudo='';
+  let titulo='';
+  if(origem==='qualidade'){
+    const ano=document.getElementById('q-ano').value;
+    const mes=document.getElementById('q-mes').value;
+    const mesLabel=mes?['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][parseInt(mes)-1]:'Todos os meses';
+    titulo=`Qualidade (Inspeção) — ${mesLabel} ${ano}`;
+    conteudo=document.getElementById('q-cards').innerHTML+document.getElementById('q-table').innerHTML;
+  } else {
+    const ano=document.getElementById('sel-ano').value;
+    const mes=document.getElementById('sel-mes').value;
+    const proc=document.getElementById('sel-proc').value;
+    const mesLabel=mes?['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][parseInt(mes)-1]:'Todos os meses';
+    titulo=`Dashboard de Produção — ${mesLabel} ${ano}${proc?' | '+proc:''}`;
+    conteudo=document.getElementById('cards-container').innerHTML+document.getElementById('table-container').innerHTML;
+  }
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Produção</title><style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#fff;color:#1a1a2e;padding:30px;}
+    .header{text-align:center;margin-bottom:30px;border-bottom:3px solid #1f6feb;padding-bottom:20px;}
+    .header img{height:60px;margin-bottom:8px;}
+    .header h1{font-size:20px;font-weight:700;color:#1f6feb;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+    .header h2{font-size:15px;color:#444;font-weight:400;}
+    .cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px;}
+    .card{border:1px solid #ddd;border-radius:8px;padding:12px;background:#f8f9ff;}
+    .card-label{font-size:10px;color:#666;text-transform:uppercase;font-weight:600;letter-spacing:.5px;}
+    .card-value{font-size:20px;font-weight:700;color:#1f6feb;line-height:1.2;}
+    .card-sub{font-size:11px;color:#888;}
+    .card.green .card-value{color:#16a34a;}
+    .card.blue .card-value{color:#1f6feb;}
+    .card.yellow .card-value{color:#b45309;}
+    .card.red .card-value{color:#dc2626;}
+    .section-title{font-size:13px;font-weight:600;color:#555;margin-bottom:8px;border-left:3px solid #1f6feb;padding-left:8px;}
+    .table-wrap{overflow-x:auto;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    thead tr{background:#1f6feb;color:#fff;}
+    thead th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;}
+    tbody tr:nth-child(even){background:#f0f4ff;}
+    tbody td{padding:7px 12px;border-bottom:1px solid #e5e7eb;}
+    .footer{margin-top:30px;border-top:2px solid #e5e7eb;padding-top:12px;text-align:center;font-size:11px;color:#888;}
+    .sem-prod{color:#999;}
+    .pct-ok{color:#16a34a;font-weight:700;}
+    .pct-warn{color:#b45309;font-weight:700;}
+    .pct-bad{color:#dc2626;font-weight:700;}
+    .bar-wrap{display:none;}
+    @media print{body{padding:15px;}button{display:none;}}
+  </style></head><body>
+    <div class="header">
+      ${logoSrc?`<img src="${logoSrc}" alt="Logo"/>`:''}<br/>
+      <h1>Relatório de Produção Mensal</h1>
+      <h2>${titulo}</h2>
+    </div>
+    ${conteudo}
+    <div class="footer">Emitido em: ${dataEmissao} — Dashboard de Produção Timbó Papéis Especiais</div>
+    <script>setTimeout(()=>{window.print();},400);<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 function doLogout(){location.reload();}
 
 // ===== SUPABASE =====
@@ -761,16 +847,6 @@ function renderGlobal(){
   }};
   const barOpts={...base,plugins:{...base.plugins,tooltip:{...base.plugins.tooltip,callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmtKg(ctx.parsed.y)} KG`}}}};
   gCharts.push(new Chart(document.getElementById('g-chart-bar'),{type:'bar',data:{labels:labels12,datasets:dsBar},options:barOpts,plugins:[barPlugin]}));
-
-  // Gráfico 2: Acumulado + linha de meta acumulada
-  let accP=0,accM=0;
-  const accProd=prodPorMes.map(v=>{accP+=v;return Math.round(accP);});
-  const accMeta=metaPorMes.map(v=>{accM+=(v||0);return Math.round(accM);});
-  const dsLine=[{label:'Acumulado Produzido',data:accProd,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.1)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#58a6ff'}];
-  if(metaPorMes.some(v=>v!==null)){
-    dsLine.push({label:'Acumulado Planejado',data:accMeta,borderColor:'#3fb950',backgroundColor:'transparent',tension:.4,borderDash:[6,3],pointRadius:4,pointBackgroundColor:'#3fb950'});
-  }
-  gCharts.push(new Chart(document.getElementById('g-chart-line'),{type:'line',data:{labels:labels12,datasets:dsLine},options:base}));
 }
 
 function popularFiltros(){
