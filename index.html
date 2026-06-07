@@ -408,18 +408,37 @@ td.sem-prod{color:var(--text3);}
 
 <script>
 // ===== AUTH =====
-const USERS={admin:'1234',producao:'prod2025'};
+// perfil: admin/producao = acesso total | dir = só dashboard/qualidade/global
+const USERS={admin:'1234',producao:'prod2025',dir:'p@pel@0_26'};
+const ROLE={admin:'full',producao:'full',dir:'view'};
+let currentRole='full';
+
+// persiste filtros por página
+const savedFilters={};
+function saveFilter(page, key, val){ if(!savedFilters[page]) savedFilters[page]={}; savedFilters[page][key]=val; }
+function loadFilter(page, key){ return savedFilters[page]?.[key]||''; }
+
 function doLogin(){
   const u=document.getElementById('usr').value.trim();
   const p=document.getElementById('pwd').value;
   if(USERS[u]===p){
+    currentRole=ROLE[u]||'full';
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='flex';
     document.getElementById('nav-user').textContent=u;
     document.getElementById('m-ano').value=new Date().getFullYear();
+
+    // oculta abas restritas para perfil view
+    if(currentRole==='view'){
+      document.querySelectorAll('.nav-tab').forEach((btn,i)=>{
+        // esconde: importar(0), gráficos(4), metas(5)
+        if([0,4,5].includes(i)) btn.style.display='none';
+      });
+    }
+
     renderMetaList();
-    goPage('importar');
-    // tenta conectar ao Supabase automaticamente
+    // dir vai direto para qualidade
+    goPage(currentRole==='view'?'qualidade':'importar');
     setTimeout(async ()=>{
       const online = await verificarSupabase();
       if(online) buscarDoServidor();
@@ -590,6 +609,8 @@ function forcarAtualizacaoServidor(){
 // ===== QUALIDADE =====
 function renderQualidade(){
   if(rawData.length===0) return;
+  saveFilter('qual','ano',document.getElementById('q-ano').value);
+  saveFilter('qual','mes',document.getElementById('q-mes').value);
   const ano=document.getElementById('q-ano').value;
   const mes=document.getElementById('q-mes').value;
   const PROC='QUALIDADE (INSPEÇÃO)';
@@ -714,16 +735,34 @@ function renderGlobal(){
     scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
   };
 
-  // Bar: produzido vs planejado
+  // Gráfico 1: Barras agrupadas — Produzido vs Meta com valores no topo
+  const prodRound=prodPorMes.map(v=>Math.round(v));
   const dsBar=[
-    {label:'Produzido (KG)',data:prodPorMes.map(v=>Math.round(v)),backgroundColor:'rgba(88,166,255,.7)',borderColor:'#58a6ff',borderWidth:1,borderRadius:4},
+    {label:'Produzido (KG)',data:prodRound,backgroundColor:'rgba(88,166,255,.75)',borderColor:'#58a6ff',borderWidth:1,borderRadius:4},
   ];
   if(metaPorMes.some(v=>v!==null)){
-    dsBar.push({label:'Planejado (KG)',data:metaPorMes,type:'line',tension:.3,fill:false,borderColor:'#3fb950',backgroundColor:'transparent',borderWidth:2,pointRadius:5,pointBackgroundColor:'#3fb950',borderDash:[6,3]});
+    dsBar.push({label:'Meta (KG)',data:metaPorMes,backgroundColor:'rgba(63,185,80,.3)',borderColor:'#3fb950',borderWidth:2,borderRadius:4});
   }
-  gCharts.push(new Chart(document.getElementById('g-chart-bar'),{type:'bar',data:{labels:labels12,datasets:dsBar},options:{...base}}));
+  const barPlugin={id:'topLabels',afterDatasetsDraw(chart){
+    const {ctx}=chart;
+    chart.data.datasets.forEach((ds,di)=>{
+      chart.getDatasetMeta(di).data.forEach((bar,i)=>{
+        const val=ds.data[i];
+        if(!val) return;
+        ctx.save();
+        ctx.fillStyle='#8b949e';
+        ctx.font='9px Segoe UI';
+        ctx.textAlign='center';
+        ctx.textBaseline='bottom';
+        ctx.fillText(fmtKg(val),bar.x,bar.y-2);
+        ctx.restore();
+      });
+    });
+  }};
+  const barOpts={...base,plugins:{...base.plugins,tooltip:{...base.plugins.tooltip,callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmtKg(ctx.parsed.y)} KG`}}}};
+  gCharts.push(new Chart(document.getElementById('g-chart-bar'),{type:'bar',data:{labels:labels12,datasets:dsBar},options:barOpts,plugins:[barPlugin]}));
 
-  // Line: acumulado
+  // Gráfico 2: Acumulado + linha de meta acumulada
   let accP=0,accM=0;
   const accProd=prodPorMes.map(v=>{accP+=v;return Math.round(accP);});
   const accMeta=metaPorMes.map(v=>{accM+=(v||0);return Math.round(accM);});
@@ -731,32 +770,36 @@ function renderGlobal(){
   if(metaPorMes.some(v=>v!==null)){
     dsLine.push({label:'Acumulado Planejado',data:accMeta,borderColor:'#3fb950',backgroundColor:'transparent',tension:.4,borderDash:[6,3],pointRadius:4,pointBackgroundColor:'#3fb950'});
   }
-  gCharts.push(new Chart(document.getElementById('g-chart-line'),{type:'line',data:{labels:labels12,datasets:dsLine},options:{...base}}));
+  gCharts.push(new Chart(document.getElementById('g-chart-line'),{type:'line',data:{labels:labels12,datasets:dsLine},options:base}));
 }
 
 function popularFiltros(){
   const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
   const anoAtual=anos[anos.length-1];
 
-  // dashboard
+  // dashboard — restaura filtro salvo ou usa padrão
   const selAno=document.getElementById('sel-ano');
-  if(selAno){ selAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); selAno.value=anoAtual; }
+  if(selAno){ selAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); selAno.value=loadFilter('dash','ano')||anoAtual; }
   allProcessos=[...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
   const procOpts='<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
   const selProc=document.getElementById('sel-proc');
-  if(selProc) selProc.innerHTML=procOpts;
+  if(selProc){ selProc.innerHTML=procOpts; selProc.value=loadFilter('dash','proc')||''; }
+  const selMes=document.getElementById('sel-mes');
+  if(selMes) selMes.value=loadFilter('dash','mes')||'';
   const mProc=document.getElementById('m-proc');
   if(mProc) mProc.innerHTML='<option value="">— Todos os processos (geral) —</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
 
   // qualidade
   const qAno=document.getElementById('q-ano');
-  if(qAno){ qAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); qAno.value=anoAtual; }
+  if(qAno){ qAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); qAno.value=loadFilter('qual','ano')||anoAtual; }
+  const qMes=document.getElementById('q-mes');
+  if(qMes) qMes.value=loadFilter('qual','mes')||'';
   document.getElementById('q-no-data-msg').style.display='none';
   document.getElementById('q-content').style.display='block';
 
   // global
   const gAno=document.getElementById('g-ano');
-  if(gAno){ gAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); gAno.value=anoAtual; }
+  if(gAno){ gAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); gAno.value=loadFilter('global','ano')||anoAtual; }
   document.getElementById('g-no-data-msg').style.display='none';
   document.getElementById('g-content').style.display='block';
 }
@@ -919,6 +962,10 @@ const SEMANA=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
 function renderTable(){
   if(rawData.length===0) return;
+  // salva filtros
+  saveFilter('dash','ano',document.getElementById('sel-ano').value);
+  saveFilter('dash','mes',document.getElementById('sel-mes').value);
+  saveFilter('dash','proc',document.getElementById('sel-proc').value);
   const data=getFiltered();
 
   // group by day from raw data
