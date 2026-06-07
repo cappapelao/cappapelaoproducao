@@ -189,6 +189,8 @@ td.sem-prod{color:var(--text3);}
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab" onclick="goPage('importar')">Importar</button>
       <button class="nav-tab active" onclick="goPage('dashboard')">Dashboard</button>
+      <button class="nav-tab" onclick="goPage('qualidade')">Qualidade</button>
+      <button class="nav-tab" onclick="goPage('global')">Visão Global</button>
       <button class="nav-tab" onclick="goPage('graficos')">Gráficos</button>
       <button class="nav-tab" onclick="goPage('metas')">Metas</button>
     </div>
@@ -298,7 +300,63 @@ td.sem-prod{color:var(--text3);}
     </div>
   </div>
 
-  <!-- GRÁFICOS -->
+  <!-- QUALIDADE -->
+  <div class="page" id="page-qualidade">
+    <div id="q-no-data-msg">
+      <div class="empty">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="8" y="8" width="32" height="32" rx="6" stroke="currentColor" stroke-width="1.5"/><path d="M16 20h16M16 28h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <p>Vá até <strong>Importar</strong> para carregar os dados</p>
+      </div>
+    </div>
+    <div id="q-content" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:8px">
+        <span style="font-size:13px;color:var(--accent);font-weight:600">🔍 Filtro fixo: QUALIDADE (INSPEÇÃO)</span>
+      </div>
+      <div class="filters">
+        <div class="filter-group">
+          <label>Ano</label>
+          <select id="q-ano" onchange="renderQualidade()"></select>
+        </div>
+        <div class="filter-group">
+          <label>Mês</label>
+          <select id="q-mes" onchange="renderQualidade()">
+            <option value="">Todos</option>
+            <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+            <option value="3">Março</option><option value="4">Abril</option>
+            <option value="5">Maio</option><option value="6">Junho</option>
+            <option value="7">Julho</option><option value="8">Agosto</option>
+            <option value="9">Setembro</option><option value="10">Outubro</option>
+            <option value="11">Novembro</option><option value="12">Dezembro</option>
+          </select>
+        </div>
+      </div>
+      <div id="q-cards"></div>
+      <div id="q-table"></div>
+    </div>
+  </div>
+
+  <!-- GLOBAL -->
+  <div class="page" id="page-global">
+    <div id="g-no-data-msg">
+      <div class="empty">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        <p>Vá até <strong>Importar</strong> para carregar os dados</p>
+      </div>
+    </div>
+    <div id="g-content" style="display:none">
+      <div class="filters" style="margin-bottom:20px">
+        <div class="filter-group">
+          <label>Ano</label>
+          <select id="g-ano" onchange="renderGlobal()"></select>
+        </div>
+      </div>
+      <div id="g-cards" style="margin-bottom:20px"></div>
+      <div class="section-title">Produção Mensal — Qualidade (Inspeção) vs Planejado</div>
+      <div class="chart-box" style="margin-bottom:20px"><canvas id="g-chart-bar"></canvas></div>
+      <div class="section-title">Acumulado Jan → Dez</div>
+      <div class="chart-box"><canvas id="g-chart-line"></canvas></div>
+    </div>
+  </div>
   <div class="page" id="page-graficos">
     <div id="charts-container">
       <div class="empty">
@@ -451,7 +509,7 @@ async function buscarDoServidor(){
       produto: r.produto || ''
     }));
 
-    carregarMetasSupabase();
+    await carregarMetasSupabase();
     popularFiltros();
 
     // SÓ AGORA esconde o import e mostra o estado carregado
@@ -485,14 +543,24 @@ async function buscarDoServidor(){
 async function carregarMetasSupabase(){
   try {
     const rows = await sbFetch('metas','select=*');
-    rows.forEach(m=>{
-      const key = m.processo
-        ? `${m.ano}-${String(m.mes).padStart(2,'0')}|${m.processo}`
-        : `${m.ano}-${String(m.mes).padStart(2,'0')}`;
-      metas[key] = { meta: parseFloat(m.meta_kg), dias: m.dias_uteis, proc: m.processo||'' };
-    });
+    if(rows && rows.length > 0){
+      // mescla metas do Supabase com as do localStorage (Supabase tem prioridade)
+      rows.forEach(m=>{
+        const key = m.processo
+          ? `${m.ano}-${String(m.mes).padStart(2,'0')}|${m.processo}`
+          : `${m.ano}-${String(m.mes).padStart(2,'0')}`;
+        metas[key] = { meta: parseFloat(m.meta_kg), dias: m.dias_uteis, proc: m.processo||'' };
+      });
+      saveMetas(); // salva no localStorage também
+    }
     renderMetaList();
-  } catch(e){ console.warn('Metas Supabase erro:', e); }
+    // re-renderiza a tabela agora que as metas chegaram
+    if(rawData.length > 0) renderTable();
+  } catch(e){
+    console.warn('Metas Supabase erro:', e);
+    // usa só o localStorage se Supabase falhar
+    renderMetaList();
+  }
 }
 
 async function salvarMetaSupabase(ano, mes, proc, meta_kg, dias_uteis){
@@ -519,20 +587,182 @@ function forcarAtualizacaoServidor(){
   buscarDoServidor();
 }
 
+// ===== QUALIDADE =====
+function renderQualidade(){
+  if(rawData.length===0) return;
+  const ano=document.getElementById('q-ano').value;
+  const mes=document.getElementById('q-mes').value;
+  const PROC='QUALIDADE (INSPEÇÃO)';
+
+  const data=rawData.filter(r=>{
+    if(r.proc!==PROC) return false;
+    if(ano&&!r.date.startsWith(ano)) return false;
+    if(mes&&parseInt(r.date.substring(5,7))!==parseInt(mes)) return false;
+    return true;
+  });
+
+  const byDay={};
+  data.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+r.kg;});
+
+  let days;
+  if(ano&&mes) days=todosOsDias(ano,mes);
+  else if(ano&&!mes){
+    const ms=[...new Set(rawData.filter(r=>r.date.startsWith(ano)&&r.proc===PROC).map(r=>r.date.substring(5,7)))].sort();
+    days=[]; ms.forEach(m=>days=days.concat(todosOsDias(ano,parseInt(m))));
+  } else {
+    days=[...new Set(data.map(r=>r.date))].sort();
+  }
+
+  if(days.length===0){
+    document.getElementById('q-table').innerHTML='<div class="empty"><p>Sem dados de Qualidade para o período.</p></div>';
+    document.getElementById('q-cards').innerHTML='';
+    return;
+  }
+
+  // meta
+  let metaDia=0;
+  if(ano&&mes){
+    const baseKey=`${ano}-${String(mes).padStart(2,'0')}`;
+    const m=metas[`${baseKey}|${PROC}`]||metas[baseKey];
+    if(m&&m.dias>0) metaDia=m.meta/m.dias;
+  }
+
+  let acum=0;
+  const rows=days.map((d,i)=>{
+    const kg=byDay[d]||0; acum+=kg;
+    const metaAcum=metaDia*(i+1);
+    const pct=metaAcum>0?Math.round(acum/metaAcum*100):null;
+    return {d,kg,acum,metaDia,metaAcum,pct,semDados:kg===0};
+  });
+
+  const total=acum;
+  const diasComProd=rows.filter(r=>r.kg>0).length;
+  const media=diasComProd>0?total/diasComProd:0;
+  const metaTotalAcum=metaDia*days.length;
+  const pctGeral=metaTotalAcum>0?Math.round(total/metaTotalAcum*100):null;
+
+  document.getElementById('q-cards').innerHTML=`
+    <div class="cards-grid" style="margin-bottom:16px">
+      <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtKg(total)}</span><span class="card-sub">KG — Qualidade</span></div>
+      <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtKg(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
+      ${metaDia>0?`<div class="card yellow"><span class="card-label">Meta Diária</span><span class="card-value">${fmtKg(metaDia)}</span><span class="card-sub">KG/dia</span></div>`:''}
+      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${days.length} dias × ${fmtKg(metaDia)}</span></div>`:''}
+      ${pctGeral!==null?`<div class="card ${pctGeral>=100?'green':pctGeral>=80?'yellow':'red'}"><span class="card-label">% Acumulado/Meta</span><span class="card-value">${pctGeral}%</span><span class="card-sub">${fmtKg(total)} produzido</span></div>`:''}
+    </div>`;
+
+  const showMeta=metaDia>0;
+  const thead=`<thead><tr><th>Data</th><th>Dia</th><th>Produzido (KG)</th><th>Acumulado (KG)</th>${showMeta?'<th>Meta Diária (KG)</th><th>Meta Acum. (KG)</th><th>% Acum./Meta</th>':''}</tr></thead>`;
+  const tbody=rows.map(r=>{
+    const dow=SEMANA[new Date(r.d+'T12:00:00').getDay()];
+    const isWE=dow==='Dom'||dow==='Sáb';
+    const trStyle=isWE?'style="background:rgba(110,118,129,.04)"':'';
+    const cls=r.pct===null?'':(r.pct>=100?'pct-ok':r.pct>=80?'pct-warn':'pct-bad');
+    const barW=r.pct!==null?Math.min(r.pct,100):0;
+    const barColor=r.pct>=100?'#3fb950':r.pct>=80?'#d29922':'#f85149';
+    const kgTd=r.semDados?`<td class="sem-prod">— sem produção</td>`:`<td style="color:var(--green);font-weight:600">${fmtKg(r.kg)}</td>`;
+    const acTd=r.acum>0?`<td style="color:#4ade80;font-weight:500">${fmtKg(r.acum)}</td>`:`<td style="color:var(--text3)">—</td>`;
+    return `<tr ${trStyle}><td>${fmtDate(r.d)}</td><td style="color:${isWE?'var(--text3)':'var(--text2)'};font-size:12px">${dow}</td>${kgTd}${acTd}${showMeta?`<td>${fmtKg(r.metaDia)}</td><td>${fmtKg(r.metaAcum)}</td><td class="td-pct ${cls}">${r.pct!==null?r.pct+'%':'—'}${r.pct!==null?`<span class="bar-wrap"><span class="bar-fill" style="width:${barW}%;background:${barColor}"></span></span>`:''}</td>`:''}</tr>`;
+  }).join('');
+
+  document.getElementById('q-table').innerHTML=`
+    <div class="section-title">Produção por Dia — QUALIDADE (INSPEÇÃO)</div>
+    ${ano&&mes?'<div class="legend-row"><span class="legend-item"><span class="legend-dot" style="background:var(--text3)"></span>Dias sem produção registrada</span></div>':''}
+    <div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
+}
+
+// ===== GLOBAL =====
+let gCharts=[];
+function renderGlobal(){
+  if(rawData.length===0) return;
+  gCharts.forEach(c=>c.destroy()); gCharts=[];
+
+  const ano=document.getElementById('g-ano').value;
+  const PROC='QUALIDADE (INSPEÇÃO)';
+
+  // 12 meses fixos
+  const meses12=Array.from({length:12},(_,i)=>i+1);
+  const labels12=MESES_ABREV;
+
+  const prodPorMes=meses12.map(m=>{
+    const ym=`${ano}-${String(m).padStart(2,'0')}`;
+    return rawData.filter(r=>r.date.startsWith(ym)&&r.proc===PROC)
+      .reduce((s,r)=>s+r.kg,0);
+  });
+
+  const metaPorMes=meses12.map(m=>{
+    const baseKey=`${ano}-${String(m).padStart(2,'0')}`;
+    const mt=metas[`${baseKey}|${PROC}`]||metas[baseKey];
+    return mt?mt.meta:null;
+  });
+
+  const totalAno=prodPorMes.reduce((s,v)=>s+v,0);
+  const totalMeta=metaPorMes.reduce((s,v)=>s+(v||0),0);
+  const pctAno=totalMeta>0?Math.round(totalAno/totalMeta*100):null;
+  const mesesComProd=prodPorMes.filter(v=>v>0).length;
+
+  document.getElementById('g-cards').innerHTML=`
+    <div class="cards-grid">
+      <div class="card blue"><span class="card-label">Total ${ano}</span><span class="card-value">${fmtKg(totalAno)}</span><span class="card-sub">KG — Qualidade</span></div>
+      <div class="card"><span class="card-label">Meses com produção</span><span class="card-value">${mesesComProd}</span><span class="card-sub">de 12 meses</span></div>
+      ${totalMeta>0?`<div class="card yellow"><span class="card-label">Meta Anual</span><span class="card-value">${fmtKg(totalMeta)}</span><span class="card-sub">KG planejado</span></div>`:''}
+      ${pctAno!==null?`<div class="card ${pctAno>=100?'green':pctAno>=80?'yellow':'red'}"><span class="card-label">% Atingimento Anual</span><span class="card-value">${pctAno}%</span><span class="card-sub">${fmtKg(totalAno)} / ${fmtKg(totalMeta)}</span></div>`:''}
+    </div>`;
+
+  const base={
+    responsive:true,maintainAspectRatio:true,
+    plugins:{legend:{labels:{color:'#8b949e',font:{size:12}}},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
+    scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
+  };
+
+  // Bar: produzido vs planejado
+  const dsBar=[
+    {label:'Produzido (KG)',data:prodPorMes.map(v=>Math.round(v)),backgroundColor:'rgba(88,166,255,.7)',borderColor:'#58a6ff',borderWidth:1,borderRadius:4},
+  ];
+  if(metaPorMes.some(v=>v!==null)){
+    dsBar.push({label:'Planejado (KG)',data:metaPorMes,type:'line',tension:.3,fill:false,borderColor:'#3fb950',backgroundColor:'transparent',borderWidth:2,pointRadius:5,pointBackgroundColor:'#3fb950',borderDash:[6,3]});
+  }
+  gCharts.push(new Chart(document.getElementById('g-chart-bar'),{type:'bar',data:{labels:labels12,datasets:dsBar},options:{...base}}));
+
+  // Line: acumulado
+  let accP=0,accM=0;
+  const accProd=prodPorMes.map(v=>{accP+=v;return Math.round(accP);});
+  const accMeta=metaPorMes.map(v=>{accM+=(v||0);return Math.round(accM);});
+  const dsLine=[{label:'Acumulado Produzido',data:accProd,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.1)',fill:true,tension:.4,pointRadius:4,pointBackgroundColor:'#58a6ff'}];
+  if(metaPorMes.some(v=>v!==null)){
+    dsLine.push({label:'Acumulado Planejado',data:accMeta,borderColor:'#3fb950',backgroundColor:'transparent',tension:.4,borderDash:[6,3],pointRadius:4,pointBackgroundColor:'#3fb950'});
+  }
+  gCharts.push(new Chart(document.getElementById('g-chart-line'),{type:'line',data:{labels:labels12,datasets:dsLine},options:{...base}}));
+}
+
 function popularFiltros(){
   const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const anoAtual=anos[anos.length-1];
+
+  // dashboard
   const selAno=document.getElementById('sel-ano');
-  if(selAno){ selAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); selAno.value=anos[anos.length-1]; }
+  if(selAno){ selAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); selAno.value=anoAtual; }
   allProcessos=[...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
   const procOpts='<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
   const selProc=document.getElementById('sel-proc');
   if(selProc) selProc.innerHTML=procOpts;
   const mProc=document.getElementById('m-proc');
   if(mProc) mProc.innerHTML='<option value="">— Todos os processos (geral) —</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
+
+  // qualidade
+  const qAno=document.getElementById('q-ano');
+  if(qAno){ qAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); qAno.value=anoAtual; }
+  document.getElementById('q-no-data-msg').style.display='none';
+  document.getElementById('q-content').style.display='block';
+
+  // global
+  const gAno=document.getElementById('g-ano');
+  if(gAno){ gAno.innerHTML=anos.map(a=>`<option value="${a}">${a}</option>`).join(''); gAno.value=anoAtual; }
+  document.getElementById('g-no-data-msg').style.display='none';
+  document.getElementById('g-content').style.display='block';
 }
 
 // ===== NAV =====
-const PAGES=['importar','dashboard','graficos','metas'];
+const PAGES=['importar','dashboard','qualidade','global','graficos','metas'];
 function goPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -541,6 +771,8 @@ function goPage(p){
   document.querySelectorAll('.nav-tab')[idx].classList.add('active');
   document.getElementById('nav-tabs').classList.remove('open');
   if(p==='graficos') renderCharts();
+  if(p==='qualidade') renderQualidade();
+  if(p==='global') renderGlobal();
 }
 function toggleMenu(){document.getElementById('nav-tabs').classList.toggle('open');}
 
