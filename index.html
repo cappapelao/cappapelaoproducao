@@ -420,8 +420,23 @@ let currentRole='full';
 
 // persiste filtros por página
 const savedFilters={};
-function saveFilter(page, key, val){ if(!savedFilters[page]) savedFilters[page]={}; savedFilters[page][key]=val; }
-function loadFilter(page, key){ return savedFilters[page]?.[key]||''; }
+// Chave de filtros por usuário no localStorage
+let _filterUser='';
+function _fkey(page,key){return `filter_${_filterUser}_${page}_${key}`;}
+
+function saveFilter(page, key, val){
+  if(!savedFilters[page]) savedFilters[page]={};
+  savedFilters[page][key]=val;
+  try{ localStorage.setItem(_fkey(page,key), val); }catch(e){}
+}
+function loadFilter(page, key){
+  // tenta localStorage primeiro, depois memória
+  try{
+    const v=localStorage.getItem(_fkey(page,key));
+    if(v!==null) return v;
+  }catch(e){}
+  return savedFilters[page]?.[key]||'';
+}
 
 function togglePwd(){
   const inp=document.getElementById('pwd');
@@ -446,6 +461,7 @@ function doLogin(){
       localStorage.removeItem('dash_remember');
     }
     currentRole=ROLE[u]||'full';
+    _filterUser=u;  // filtros por usuário
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='flex';
     document.getElementById('nav-user').textContent=u;
@@ -804,6 +820,7 @@ function renderGlobal(){
   gCharts.forEach(c=>c.destroy()); gCharts=[];
 
   const ano=document.getElementById('g-ano').value;
+  saveFilter('global','ano', ano);
   const PROC='QUALIDADE (INSPEÇÃO)';
 
   // 12 meses fixos
@@ -1202,10 +1219,17 @@ function renderCharts(){
   if(rawData.length===0) return;
   destroyCharts();
 
-  const cAno  = document.getElementById('c-ano')   ? document.getElementById('c-ano').value   : '';
-  const cMes  = document.getElementById('c-mes')   ? document.getElementById('c-mes').value   : '';
-  const cMaq  = document.getElementById('c-maq')   ? document.getElementById('c-maq').value   : '';
-  const cProd = document.getElementById('c-prod')  ? document.getElementById('c-prod').value  : '';
+  // lê o valor atual dos selects (se existirem) ou do localStorage
+  const cAno  = document.getElementById('c-ano')  ? document.getElementById('c-ano').value  : loadFilter('graf','ano');
+  const cMes  = document.getElementById('c-mes')  ? document.getElementById('c-mes').value  : loadFilter('graf','mes');
+  const cMaq  = document.getElementById('c-maq')  ? document.getElementById('c-maq').value  : loadFilter('graf','maq');
+  const cProd = document.getElementById('c-prod') ? document.getElementById('c-prod').value : loadFilter('graf','prod');
+
+  // persiste os filtros escolhidos
+  saveFilter('graf','ano', cAno);
+  saveFilter('graf','mes', cMes);
+  saveFilter('graf','maq', cMaq);
+  saveFilter('graf','prod',cProd);
 
   // listas únicas para os selects
   const allMaquinas = [...new Set(rawData.map(r=>r.maq).filter(Boolean))].sort();
