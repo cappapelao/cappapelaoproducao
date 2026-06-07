@@ -462,6 +462,20 @@ function doLogin(){
     renderMetaList();
     // dir vai direto para qualidade
     goPage(currentRole==='view'?'qualidade':'importar');
+
+    // Carrega cache local ANTES do Supabase (acesso instantâneo)
+    if(carregarDadosLocais()){
+      popularFiltros();
+      document.getElementById('import-waiting').style.display='none';
+      document.getElementById('file-loaded').style.display='flex';
+      document.getElementById('file-name').textContent='💾 Dados em cache — atualizando...';
+      const anosC=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+      document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anosC.join(', ')}`;
+      document.getElementById('no-data-msg').style.display='none';
+      document.getElementById('dashboard-content').style.display='block';
+      renderTable();
+    }
+
     setTimeout(async ()=>{
       const online = await verificarSupabase();
       if(online) buscarDoServidor();
@@ -498,11 +512,16 @@ function imprimirRelatorio(origem){
     .header img{height:60px;margin-bottom:8px;}
     .header h1{font-size:20px;font-weight:700;color:#1f6feb;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
     .header h2{font-size:15px;color:#444;font-weight:400;}
-    .cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px;}
-    .card{border:1px solid #ddd;border-radius:8px;padding:12px;background:#f8f9ff;}
-    .card-label{font-size:10px;color:#666;text-transform:uppercase;font-weight:600;letter-spacing:.5px;}
-    .card-value{font-size:20px;font-weight:700;color:#1f6feb;line-height:1.2;}
-    .card-sub{font-size:11px;color:#888;}
+    .cards-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;}
+    @media print{.cards-grid{grid-template-columns:repeat(5,1fr);}}
+    .card{border:1px solid #ccd;border-radius:8px;padding:10px 12px;background:#f4f6ff;display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden;}
+    .card.green{border-color:#bbf7d0;background:#f0fdf4;}
+    .card.blue{border-color:#bfdbfe;background:#eff6ff;}
+    .card.yellow{border-color:#fde68a;background:#fffbeb;}
+    .card.red{border-color:#fecaca;background:#fff1f2;}
+    .card-label{font-size:9px;color:#666;text-transform:uppercase;font-weight:700;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .card-value{font-size:18px;font-weight:800;color:#1f6feb;line-height:1.15;word-break:break-word;}
+    .card-sub{font-size:10px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .card.green .card-value{color:#16a34a;}
     .card.blue .card-value{color:#1f6feb;}
     .card.yellow .card-value{color:#b45309;}
@@ -615,12 +634,13 @@ async function buscarDoServidor(){
     }));
 
     await carregarMetasSupabase();
+    salvarDadosLocais();  // persiste no cache local
     popularFiltros();
 
     // SÓ AGORA esconde o import e mostra o estado carregado
     document.getElementById('import-waiting').style.display='none';
     document.getElementById('file-loaded').style.display='flex';
-    document.getElementById('file-name').textContent='☁️ Supabase — atualização automática';
+    document.getElementById('file-name').textContent='☁️ Supabase — dados sincronizados';
     const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
     document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anos.join(', ')}`;
     document.getElementById('no-data-msg').style.display='none';
@@ -900,6 +920,24 @@ let rawData=[];
 let metas={};
 let allProcessos=[];
 
+// ===== PERSISTÊNCIA LOCAL DOS DADOS =====
+function salvarDadosLocais(){
+  try{
+    localStorage.setItem('dash_rawData', JSON.stringify(rawData));
+    localStorage.setItem('dash_metas', JSON.stringify(metas));
+  }catch(e){console.warn('Cache local cheio:',e);}
+}
+function carregarDadosLocais(){
+  try{
+    const rd=localStorage.getItem('dash_rawData');
+    const mt=localStorage.getItem('dash_metas');
+    if(rd) rawData=JSON.parse(rd);
+    if(mt) metas=JSON.parse(mt);
+    return rawData.length>0;
+  }catch(e){return false;}
+}
+let allProcessos=[];
+
 function parseExcelDate(dv){
   if(typeof dv==='number'){
     // Excel serial → UTC date (epoch 1899-12-30)
@@ -980,6 +1018,7 @@ function handleFile(file){
       document.getElementById('dashboard-content').style.display='block';
 
       renderTable();
+      salvarDadosLocais();  // persiste no cache local
       toast('Importado com sucesso!','success');
     }catch(err){toast('Erro: '+err.message,'error');}
   };
@@ -1335,6 +1374,7 @@ function salvarMeta(){
   metas[key]={meta:val,dias,proc};
   saveMetas();
   salvarMetaSupabase(ano, mes, proc, val, dias);
+  salvarDadosLocais();
   renderMetaList();
   toast('Meta salva!','success');
 }
@@ -1345,6 +1385,7 @@ function deleteMeta(key){
   delete metas[key];
   saveMetas();
   deletarMetaSupabase(y, m, proc);
+  salvarDadosLocais();
   renderMetaList();
   toast('Meta removida.','success');
 }
