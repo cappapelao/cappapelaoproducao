@@ -498,7 +498,8 @@ function doLogin(){
     goPage(currentRole==='view'?'qualidade':'importar');
 
     // Carrega cache local (acesso instantâneo)
-    if(carregarDadosLocais()){
+    const temCache = carregarDadosLocais();
+    if(temCache){
       popularFiltros();
       document.getElementById('import-waiting').style.display='none';
       document.getElementById('file-loaded').style.display='flex';
@@ -512,13 +513,18 @@ function doLogin(){
       document.getElementById('dashboard-content').style.display='block';
       atualizarBtnEnviarTxt();
       renderTable();
+      // Verifica status do Supabase (sem recarregar dados)
+      setTimeout(async ()=>{ await verificarSupabase(); }, 500);
+    } else {
+      // Sem cache local: busca dados do Supabase automaticamente
+      setTimeout(async ()=>{ await buscarDoServidor(); }, 300);
     }
-
-    // Verifica status do Supabase sem carregar dados automaticamente
-    setTimeout(async ()=>{ await verificarSupabase(); }, 500);
 
     // Mostra botão ↻ Reimportar se há handle salvo no IndexedDB
     initReimportarBtn();
+
+    // Inicia ping para manter conexão com Supabase ativa
+    iniciarPingSupabase();
   } else {
     document.getElementById('login-err').style.display='block';
   }
@@ -592,13 +598,28 @@ function imprimirRelatorio(origem){
   win.document.close();
 }
 
-function doLogout(){location.reload();}
+function doLogout(){ pararPingSupabase(); location.reload(); }
 
 // ===== SUPABASE =====
 const SB_URL = 'https://ugfqbjpfpgfukeshiefy.supabase.co/rest/v1';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnZnFianBmcGdmdWtlc2hpZWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTgxMTQsImV4cCI6MjA5NjM5NDExNH0.T4HxLDUu2c9VWOu5hcp9SFMXqRzJntGoL_-K2YwOxX4';
 const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
 let autoRefreshTimer = null;
+let pingTimer = null;
+
+// Ping leve a cada 4 minutos para evitar que o Supabase encerre a conexão por inatividade
+function iniciarPingSupabase(){
+  if(pingTimer) clearInterval(pingTimer);
+  pingTimer = setInterval(async ()=>{
+    try {
+      await fetch(`${SB_URL}/producao?select=id&limit=1`, { headers: SB_HEADERS });
+    } catch(e){ /* silencioso — só mantém a conexão viva */ }
+  }, 4 * 60 * 1000); // 4 minutos
+}
+
+function pararPingSupabase(){
+  if(pingTimer){ clearInterval(pingTimer); pingTimer = null; }
+}
 
 async function sbFetch(tabela, params=''){
   const r = await fetch(`${SB_URL}/${tabela}?${params}`, { headers: SB_HEADERS });
