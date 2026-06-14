@@ -658,67 +658,66 @@ async function buscarDoServidor(){
     if(!overlay){
       overlay = document.createElement('div');
       overlay.id = 'sb-loading-overlay';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.7);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
-      overlay.innerHTML = `
-        <div style="width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
-        <p style="color:var(--text);font-size:15px">Carregando dados do Supabase...</p>`;
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.8);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
       document.body.appendChild(overlay);
     }
+    const setMsg = (txt) => {
+      overlay.innerHTML = `
+        <div style="width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
+        <p style="color:var(--text);font-size:15px;text-align:center;padding:0 24px">${txt}</p>`;
+    };
+    setMsg('Conectando ao Supabase...');
 
-    // também atualiza zona de upload se estiver visível
-    const zone = document.getElementById('upload-zone');
-    if(zone) zone.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0">
-        <div style="width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
-        <p style="font-size:14px;color:var(--text2)">Carregando dados do Supabase...</p>
-      </div>`;
+    // Conta total de registros primeiro
+    const countR = await fetch(`${SB_URL}/producao?select=id`, {
+      headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' }
+    });
+    const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
 
-    // busca todos os registros em lotes de 1000
-    let todos = [], from = 0, tam = 1000;
-    while(true){
-      const lote = await sbFetch('producao',
-        `select=data,kg,processo,maquina,produto&order=data.asc&limit=${tam}&offset=${from}`);
-      todos = todos.concat(lote);
-      if(lote.length < tam) break;
-      from += tam;
-    }
-
-    if(todos.length === 0){
-      // sem dados — restaura zona de upload normal
-      if(zone) zone.innerHTML = `
-        <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
-          <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
-        <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
-        <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .xlsx e .xls</p>`;
-      toast('Supabase conectado mas sem dados. Rode o sincronizador ou importe manualmente.','error');
+    if(total === 0){
+      const ov = document.getElementById('sb-loading-overlay');
+      if(ov) ov.remove();
+      toast('Supabase conectado mas sem dados.','error');
       return;
     }
 
-    // normaliza dados do Supabase para o formato interno
-    const sbData = todos.map(r=>({
-      date: r.data,
-      kg:   parseFloat(r.kg),
-      proc: r.processo || '',
-      maq:  r.maquina  || '',
-      produto: r.produto || ''
-    }));
+    setMsg(`Baixando ${total.toLocaleString('pt-BR')} registros...`);
 
-    // ── Merge: TXT tem prioridade. Adiciona do Supabase apenas datas
-    //    que ainda não existem no TXT (rawData local).
-    let fonte = 'Supabase';
-    if(rawData.length > 0){
-      // há dados do TXT — faz merge por data+proc+maq+kg (chave composta)
-      const chaves = new Set(rawData.map(r=>`${r.date}|${r.proc}|${r.maq}|${r.kg}`));
-      const novos  = sbData.filter(r=>!chaves.has(`${r.date}|${r.proc}|${r.maq}|${r.kg}`));
-      rawData = [...rawData, ...novos].sort((a,b)=>a.date.localeCompare(b.date));
-      fonte = novos.length > 0
-        ? `TXT + Supabase (+${novos.length.toLocaleString('pt-BR')} registros novos)`
-        : 'TXT — Supabase já está incluído';
-    } else {
-      rawData = sbData;
+    // Busca em lotes paralelos para ser mais rápido
+    const TAM = 2000;
+    const numLotes = Math.ceil(total / TAM);
+    const promises = [];
+    for(let i = 0; i < numLotes; i++){
+      promises.push(
+        sbFetch('producao',
+          `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${i * TAM}`)
+      );
     }
+
+    // Executa todos os lotes em paralelo (muito mais rápido)
+    const lotes = await Promise.all(promises);
+    let todos = lotes.flat();
+
+    setMsg('Processando dados...');
+
+    // Normaliza dados — garante formato correto de data e kg
+    const sbData = todos.map(r => {
+      // data: garante YYYY-MM-DD (remove hora se vier com timestamp)
+      const dataStr = r.data ? String(r.data).substring(0, 10) : '';
+      // kg: aceita vírgula ou ponto como decimal
+      const kgNum = parseFloat(String(r.kg || '0').replace(',', '.'));
+      return {
+        date:    dataStr,
+        kg:      isNaN(kgNum) ? 0 : kgNum,
+        proc:    r.processo || '',
+        maq:     r.maquina  || '',
+        produto: r.produto   || ''
+      };
+    }).filter(r => r.date.length === 10); // descarta registros sem data válida
+
+    // Usa direto os dados do Supabase (sem merge com TXT no celular)
+    rawData = sbData;
+    const fonte = 'Supabase';
 
     await carregarMetasSupabase();
     salvarDadosLocais();  // persiste no cache local
@@ -727,6 +726,9 @@ async function buscarDoServidor(){
     // Remove overlay de carregamento global
     const ov = document.getElementById('sb-loading-overlay');
     if(ov) ov.remove();
+
+    // também atualiza zona de upload se estiver visível
+    const zone = document.getElementById('upload-zone');
 
     // SÓ AGORA esconde o import e mostra o estado carregado
     document.getElementById('import-waiting').style.display='none';
@@ -750,7 +752,7 @@ async function buscarDoServidor(){
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
   } catch(e){
-    // Remove overlay e restaura zona de upload
+    // Remove overlay e mostra erro
     const ov = document.getElementById('sb-loading-overlay');
     if(ov) ov.remove();
     const zone = document.getElementById('upload-zone');
