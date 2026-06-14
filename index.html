@@ -503,18 +503,17 @@ function doLogin(){
       popularFiltros();
       document.getElementById('import-waiting').style.display='none';
       document.getElementById('file-loaded').style.display='flex';
-      document.getElementById('file-name').textContent='💾 Dados em cache local';
+      document.getElementById('file-name').textContent='💾 Carregando dados atualizados...';
       const anosC=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
       document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anosC.join(', ')}`;
-      // mostra botão Atualizar dados se há handle (será atualizado pelo initReimportarBtn)
       const brl=document.getElementById('btn-reimport-loaded');
       if(brl) brl.style.display='inline-flex';
       document.getElementById('no-data-msg').style.display='none';
       document.getElementById('dashboard-content').style.display='block';
       atualizarBtnEnviarTxt();
       renderTable();
-      // Verifica status do Supabase (sem recarregar dados)
-      setTimeout(async ()=>{ await verificarSupabase(); }, 500);
+      // Sempre atualiza do Supabase em background para garantir dados iguais em todos dispositivos
+      setTimeout(async ()=>{ await buscarDoServidor(); }, 800);
     } else {
       // Sem cache local: busca dados do Supabase automaticamente
       setTimeout(async ()=>{ await buscarDoServidor(); }, 300);
@@ -652,21 +651,28 @@ async function verificarSupabase(){
 async function buscarDoServidor(){
   const ok = await verificarSupabase();
   if(!ok) return;
+
+  // Se já há dados na tela, atualiza silenciosamente (sem overlay)
+  const temDadosNaTela = rawData.length > 0;
+
+  // Helpers do overlay
+  const getOverlay = () => document.getElementById('sb-loading-overlay');
+  const setMsg = (txt) => {
+    const ov = getOverlay();
+    if(ov) ov.innerHTML = `
+      <div style="width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
+      <p style="color:var(--text);font-size:15px;text-align:center;padding:0 24px">${txt}</p>`;
+  };
+
   try {
-    // Mostra overlay de carregamento global (visível em qualquer página)
-    let overlay = document.getElementById('sb-loading-overlay');
-    if(!overlay){
-      overlay = document.createElement('div');
+    // Só mostra overlay quando não há dados ainda (primeiro carregamento)
+    if(!temDadosNaTela){
+      let overlay = document.createElement('div');
       overlay.id = 'sb-loading-overlay';
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.8);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
       document.body.appendChild(overlay);
+      setMsg('Conectando ao Supabase...');
     }
-    const setMsg = (txt) => {
-      overlay.innerHTML = `
-        <div style="width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
-        <p style="color:var(--text);font-size:15px;text-align:center;padding:0 24px">${txt}</p>`;
-    };
-    setMsg('Conectando ao Supabase...');
 
     // Conta total de registros primeiro
     const countR = await fetch(`${SB_URL}/producao?select=id`, {
@@ -675,15 +681,14 @@ async function buscarDoServidor(){
     const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
 
     if(total === 0){
-      const ov = document.getElementById('sb-loading-overlay');
-      if(ov) ov.remove();
+      const ov = getOverlay(); if(ov) ov.remove();
       toast('Supabase conectado mas sem dados.','error');
       return;
     }
 
     setMsg(`Baixando ${total.toLocaleString('pt-BR')} registros...`);
 
-    // Busca em lotes paralelos para ser mais rápido
+    // Busca em lotes paralelos
     const TAM = 2000;
     const numLotes = Math.ceil(total / TAM);
     const promises = [];
@@ -693,18 +698,12 @@ async function buscarDoServidor(){
           `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${i * TAM}`)
       );
     }
-
-    // Executa todos os lotes em paralelo (muito mais rápido)
     const lotes = await Promise.all(promises);
-    let todos = lotes.flat();
-
-    setMsg('Processando dados...');
+    const todos = lotes.flat();
 
     // Normaliza dados — garante formato correto de data e kg
-    const sbData = todos.map(r => {
-      // data: garante YYYY-MM-DD (remove hora se vier com timestamp)
+    rawData = todos.map(r => {
       const dataStr = r.data ? String(r.data).substring(0, 10) : '';
-      // kg: aceita vírgula ou ponto como decimal
       const kgNum = parseFloat(String(r.kg || '0').replace(',', '.'));
       return {
         date:    dataStr,
@@ -713,48 +712,45 @@ async function buscarDoServidor(){
         maq:     r.maquina  || '',
         produto: r.produto   || ''
       };
-    }).filter(r => r.date.length === 10); // descarta registros sem data válida
-
-    // Usa direto os dados do Supabase (sem merge com TXT no celular)
-    rawData = sbData;
-    const fonte = 'Supabase';
+    }).filter(r => r.date.length === 10);
 
     await carregarMetasSupabase();
-    salvarDadosLocais();  // persiste no cache local
+    salvarDadosLocais();
     popularFiltros();
 
-    // Remove overlay de carregamento global
-    const ov = document.getElementById('sb-loading-overlay');
-    if(ov) ov.remove();
+    // Remove overlay
+    const ov = getOverlay(); if(ov) ov.remove();
 
-    // também atualiza zona de upload se estiver visível
-    const zone = document.getElementById('upload-zone');
-
-    // SÓ AGORA esconde o import e mostra o estado carregado
+    // Atualiza indicadores
     document.getElementById('import-waiting').style.display='none';
     document.getElementById('file-loaded').style.display='flex';
-    document.getElementById('file-name').textContent=`☁️ ${fonte}`;
+    document.getElementById('file-name').textContent='☁️ Supabase';
     const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
     document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anos.join(', ')}`;
     document.getElementById('no-data-msg').style.display='none';
     document.getElementById('dashboard-content').style.display='block';
     renderTable();
-    // Renderiza a página que está ativa (importante para perfil 'view' que cai em qualidade)
+
+    // Renderiza a página ativa
     const paginaAtiva = document.querySelector('.page.active');
     if(paginaAtiva){
       const idPag = paginaAtiva.id;
       if(idPag === 'page-qualidade') renderQualidade();
       else if(idPag === 'page-global') renderGlobal();
     }
-    toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!`,'success');
+
+    if(temDadosNaTela){
+      toast(`✓ Dados sincronizados (${rawData.length.toLocaleString('pt-BR')} registros)`,'success');
+    } else {
+      toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!`,'success');
+    }
 
     // auto-refresh a cada 60 min
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
+
   } catch(e){
-    // Remove overlay e mostra erro
-    const ov = document.getElementById('sb-loading-overlay');
-    if(ov) ov.remove();
+    const ov = getOverlay(); if(ov) ov.remove();
     const zone = document.getElementById('upload-zone');
     if(zone) zone.innerHTML = `
       <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
