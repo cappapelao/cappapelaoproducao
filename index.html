@@ -653,7 +653,19 @@ async function buscarDoServidor(){
   const ok = await verificarSupabase();
   if(!ok) return;
   try {
-    // mostra estado "carregando" na zona de upload sem esconder ela
+    // Mostra overlay de carregamento global (visível em qualquer página)
+    let overlay = document.getElementById('sb-loading-overlay');
+    if(!overlay){
+      overlay = document.createElement('div');
+      overlay.id = 'sb-loading-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.7);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+      overlay.innerHTML = `
+        <div style="width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite"></div>
+        <p style="color:var(--text);font-size:15px">Carregando dados do Supabase...</p>`;
+      document.body.appendChild(overlay);
+    }
+
+    // também atualiza zona de upload se estiver visível
     const zone = document.getElementById('upload-zone');
     if(zone) zone.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0">
@@ -712,6 +724,10 @@ async function buscarDoServidor(){
     salvarDadosLocais();  // persiste no cache local
     popularFiltros();
 
+    // Remove overlay de carregamento global
+    const ov = document.getElementById('sb-loading-overlay');
+    if(ov) ov.remove();
+
     // SÓ AGORA esconde o import e mostra o estado carregado
     document.getElementById('import-waiting').style.display='none';
     document.getElementById('file-loaded').style.display='flex';
@@ -721,13 +737,22 @@ async function buscarDoServidor(){
     document.getElementById('no-data-msg').style.display='none';
     document.getElementById('dashboard-content').style.display='block';
     renderTable();
+    // Renderiza a página que está ativa (importante para perfil 'view' que cai em qualidade)
+    const paginaAtiva = document.querySelector('.page.active');
+    if(paginaAtiva){
+      const idPag = paginaAtiva.id;
+      if(idPag === 'page-qualidade') renderQualidade();
+      else if(idPag === 'page-global') renderGlobal();
+    }
     toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!`,'success');
 
     // auto-refresh a cada 60 min
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
   } catch(e){
-    // erro — restaura zona de upload
+    // Remove overlay e restaura zona de upload
+    const ov = document.getElementById('sb-loading-overlay');
+    if(ov) ov.remove();
     const zone = document.getElementById('upload-zone');
     if(zone) zone.innerHTML = `
       <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
