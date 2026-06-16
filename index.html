@@ -223,7 +223,6 @@ td.sem-prod{color:var(--text3);}
             <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
             <button onclick="forcarAtualizacaoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2)">⟳ Reler Excel no servidor</button>
             <button id="btn-enviar-txt" onclick="enviarTxtParaSupabase()" title="Apaga todos os dados antigos e envia somente os deste arquivo" style="display:none;padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--green);background:transparent;color:var(--green)">⬆ Enviar TXT para Supabase (substitui dados antigos)</button>
-            <button id="btn-limpar-duplicatas" onclick="limparDuplicatasSupabase()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid #f85149;background:transparent;color:#f85149">🗑 Limpar duplicatas no Supabase</button>
           </div>
           <div id="envio-progress" style="display:none;margin-top:12px">
             <div style="font-size:12px;color:var(--text2);margin-bottom:6px" id="envio-status">Enviando...</div>
@@ -619,83 +618,6 @@ function iniciarPingSupabase(){
 
 function pararPingSupabase(){
   if(pingTimer){ clearInterval(pingTimer); pingTimer = null; }
-}
-
-async function limparDuplicatasSupabase(){
-  if(!confirm('Isso vai remover registros duplicados do Supabase permanentemente.\n\nDeseja continuar?')) return;
-
-  const btn = document.getElementById('btn-limpar-duplicatas');
-  btn.disabled = true;
-  btn.textContent = '⏳ Limpando...';
-
-  try {
-    // 1. Busca todos os registros com id
-    const countR = await fetch(`${SB_URL}/producao?select=id`, {
-      headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' }
-    });
-    const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
-
-    if(total === 0){ toast('Nenhum registro no Supabase.','error'); return; }
-
-    // 2. Baixa tudo com id para identificar duplicatas
-    const TAM = 2000;
-    const numLotes = Math.ceil(total / TAM);
-    const promises = [];
-    for(let i = 0; i < numLotes; i++){
-      promises.push(
-        fetch(`${SB_URL}/producao?select=id,data,kg,processo,maquina,produto&order=id.asc&limit=${TAM}&offset=${i*TAM}`, { headers: SB_HEADERS })
-          .then(r => r.json())
-      );
-    }
-    const lotes = await Promise.all(promises);
-    const todos = lotes.flat();
-
-    // 3. Identifica IDs duplicados (mantém o menor id de cada grupo)
-    const visto = new Map(); // chave → menor id
-    const idsParaDeletar = [];
-
-    for(const r of todos){
-      const chave = `${r.data}|${r.processo||''}|${r.maquina||''}|${r.kg}`;
-      if(visto.has(chave)){
-        // já existe — este é duplicata, marca para deletar
-        idsParaDeletar.push(r.id);
-      } else {
-        visto.set(chave, r.id);
-      }
-    }
-
-    if(idsParaDeletar.length === 0){
-      toast('Nenhuma duplicata encontrada no Supabase! ✓','success');
-      btn.disabled = false;
-      btn.textContent = '🗑 Limpar duplicatas no Supabase';
-      return;
-    }
-
-    // 4. Deleta em lotes de 200 (usar parâmetro "in" do PostgREST)
-    const LOTE_DEL = 200;
-    let deletados = 0;
-    for(let i = 0; i < idsParaDeletar.length; i += LOTE_DEL){
-      const fatia = idsParaDeletar.slice(i, i + LOTE_DEL);
-      const r = await fetch(`${SB_URL}/producao?id=in.(${fatia.join(',')})`, {
-        method: 'DELETE',
-        headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' }
-      });
-      if(!r.ok) throw new Error(`Erro ao deletar: ${r.status}`);
-      deletados += fatia.length;
-      btn.textContent = `⏳ Removendo... ${deletados}/${idsParaDeletar.length}`;
-    }
-
-    toast(`✓ ${deletados.toLocaleString('pt-BR')} duplicatas removidas do Supabase! Recarregando dados...`, 'success');
-
-    // 5. Recarrega dados frescos
-    setTimeout(() => buscarDoServidor(), 1500);
-
-  } catch(e){
-    toast('Erro ao limpar duplicatas: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🗑 Limpar duplicatas no Supabase';
-  }
 }
 
 async function sbFetch(tabela, params=''){
