@@ -222,7 +222,7 @@ td.sem-prod{color:var(--text3);}
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
             <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
             <button onclick="forcarAtualizacaoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2)">⟳ Reler Excel no servidor</button>
-            <button id="btn-enviar-txt" onclick="enviarTxtParaSupabase()" style="display:none;padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--green);background:transparent;color:var(--green)">⬆ Enviar TXT para Supabase</button>
+            <button id="btn-enviar-txt" onclick="enviarTxtParaSupabase()" title="Apaga todos os dados antigos e envia somente os deste arquivo" style="display:none;padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--green);background:transparent;color:var(--green)">⬆ Enviar TXT para Supabase (substitui dados antigos)</button>
             <button id="btn-limpar-duplicatas" onclick="limparDuplicatasSupabase()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid #f85149;background:transparent;color:#f85149">🗑 Limpar duplicatas no Supabase</button>
           </div>
           <div id="envio-progress" style="display:none;margin-top:12px">
@@ -913,7 +913,7 @@ async function enviarTxtParaSupabase(){
   if(rawData.length===0){toast('Importe um arquivo TXT primeiro.','error');return;}
   if(!confirm(`Enviar ${rawData.length.toLocaleString('pt-BR')} registros para o Supabase?
 
-Registros já existentes serão mantidos (upsert por data+processo+maquina+kg).`)) return;
+Os dados antigos da tabela serão APAGADOS e substituídos pelos deste arquivo.`)) return;
 
   const btn=document.getElementById('btn-enviar-txt');
   const progDiv=document.getElementById('envio-progress');
@@ -921,8 +921,30 @@ Registros já existentes serão mantidos (upsert por data+processo+maquina+kg).`
   const bar=document.getElementById('envio-bar');
 
   btn.disabled=true;
-  btn.textContent='Enviando...';
+  btn.textContent='Apagando dados antigos...';
   progDiv.style.display='block';
+  statusEl.textContent='Apagando registros antigos do Supabase...';
+  bar.style.width='0%';
+
+  // ── Apaga TODOS os registros antigos antes de enviar os novos
+  try{
+    const delResp=await fetch(`${SB_URL}/producao?id=gt.0`,{
+      method:'DELETE',
+      headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+    });
+    if(!delResp.ok){
+      const txt=await delResp.text();
+      throw new Error(`Falha ao apagar dados antigos: ${txt}`);
+    }
+  }catch(e){
+    statusEl.textContent='❌ Erro ao apagar dados antigos: '+e.message;
+    toast('Erro ao apagar dados antigos: '+e.message,'error');
+    btn.disabled=false;
+    btn.textContent='⬆ Enviar TXT para Supabase (substitui dados antigos)';
+    return;
+  }
+
+  btn.textContent='Enviando...';
 
   const LOTE=200; // registros por request
   const total=rawData.length;
@@ -943,7 +965,7 @@ Registros já existentes serão mantidos (upsert por data+processo+maquina+kg).`
         headers:{
           ...SB_HEADERS,
           'Content-Type':'application/json',
-          'Prefer':'resolution=merge-duplicates'
+          'Prefer':'return=minimal'
         },
         body:JSON.stringify(lote)
       });
@@ -981,7 +1003,7 @@ Registros já existentes serão mantidos (upsert por data+processo+maquina+kg).`
     toast('Erro no envio: '+e.message,'error');
   } finally {
     btn.disabled=false;
-    btn.textContent='⬆ Enviar TXT para Supabase';
+    btn.textContent='⬆ Enviar TXT para Supabase (substitui dados antigos)';
     setTimeout(()=>{ progDiv.style.display='none'; bar.style.width='0%'; },5000);
   }
 }
