@@ -1063,10 +1063,10 @@ function renderGlobal(){
   // Gráfico 1: Barras agrupadas — Produzido vs Meta com valores no topo
   const prodRound=prodPorMes.map(v=>Math.round(v));
   const dsBar=[
-    {label:'Produzido (KG)',data:prodRound,backgroundColor:'rgba(88,166,255,.75)',borderColor:'#58a6ff',borderWidth:1,borderRadius:4},
+    {label:'Produzido (KG)',data:prodRound,backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'#79c0ff','rgba(88,166,255,.15)'),borderColor:'#58a6ff',borderWidth:1,borderRadius:4},
   ];
   if(metaPorMes.some(v=>v!==null)){
-    dsBar.push({label:'Meta (KG)',data:metaPorMes,backgroundColor:'rgba(63,185,80,.3)',borderColor:'#3fb950',borderWidth:2,borderRadius:4});
+    dsBar.push({label:'Meta (KG)',data:metaPorMes,backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'#56d364','rgba(63,185,80,.08)'),borderColor:'#3fb950',borderWidth:2,borderRadius:4});
   }
   const barPlugin={id:'topLabels',afterDatasetsDraw(chart){
     const {ctx}=chart;
@@ -1378,6 +1378,15 @@ const MESES_ABREV=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','
 const MESES_FULL=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const SEMANA=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+// gera gradiente vertical (topo → base) usando a área real do gráfico
+function vGradient(ctx,chartArea,colorTop,colorBottom){
+  if(!chartArea) return colorTop;
+  const g=ctx.createLinearGradient(0,chartArea.top,0,chartArea.bottom);
+  g.addColorStop(0,colorTop);
+  g.addColorStop(1,colorBottom);
+  return g;
+}
+
 // plugin genérico: desenha o valor de cada barra/ponto, sem abreviar
 const valueLabelsPlugin={id:'valueLabels',afterDatasetsDraw(chart){
   const {ctx}=chart;
@@ -1638,21 +1647,21 @@ function renderCharts(){
   const datasetMensal=[{
     label:labelMaq,
     data:kgPorMes.map(v=>Math.round(v)),
-    backgroundColor:corMensal+'b3', borderColor:corMensal, borderWidth:1, borderRadius:4
+    backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'#79c0ff','rgba(88,166,255,.12)'), borderColor:corMensal, borderWidth:1, borderRadius:4
   }];
 
   const datasetDiario=[{
     label:labelMaq,
     data:kgPorDia.map(v=>Math.round(v)),
-    backgroundColor:corDiario+'b3', borderColor:corDiario, borderWidth:1, borderRadius:3
+    backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'#e3b341','rgba(210,153,34,.1)'), borderColor:corDiario, borderWidth:1, borderRadius:3
   }];
 
   let acc=0;
   const datasetAcumulado=[{
     label:labelMaq,
     data:kgPorMes.map(v=>{acc+=v; return Math.round(acc);}),
-    borderColor:corAcum, backgroundColor:'transparent',
-    tension:.4, pointRadius:4, borderWidth:2, pointBackgroundColor:corAcum
+    borderColor:corAcum, backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'rgba(63,185,80,.35)','rgba(63,185,80,0)'),
+    fill:true, tension:.4, pointRadius:4, borderWidth:2, pointBackgroundColor:corAcum
   }];
 
   const base={
