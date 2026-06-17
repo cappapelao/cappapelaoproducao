@@ -1027,7 +1027,7 @@ function renderGlobal(){
 
   // 12 meses fixos
   const meses12=Array.from({length:12},(_,i)=>i+1);
-  const labels12=MESES_ABREV;
+  const labels12=MESES_FULL;
 
   const prodPorMes=meses12.map(m=>{
     const ym=`${ano}-${String(m).padStart(2,'0')}`;
@@ -1055,7 +1055,7 @@ function renderGlobal(){
     </div>`;
 
   const base={
-    responsive:true,maintainAspectRatio:true,
+    responsive:true,maintainAspectRatio:true,layout:{padding:{top:18}},
     plugins:{legend:{labels:{color:'#8b949e',font:{size:12}}},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
     scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
   };
@@ -1378,6 +1378,32 @@ const MESES_ABREV=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','
 const MESES_FULL=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const SEMANA=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+// plugin genérico: desenha o valor de cada barra/ponto, sem abreviar
+const valueLabelsPlugin={id:'valueLabels',afterDatasetsDraw(chart){
+  const {ctx}=chart;
+  chart.data.datasets.forEach((ds,di)=>{
+    const meta=chart.getDatasetMeta(di);
+    if(meta.hidden) return;
+    meta.data.forEach((el,i)=>{
+      const val=ds.data[i];
+      if(val===null||val===undefined||val===0) return;
+      ctx.save();
+      ctx.font='9px Segoe UI';
+      ctx.textAlign='center';
+      if(meta.type==='line'){
+        ctx.fillStyle=ds.borderColor||'#8b949e';
+        ctx.textBaseline='bottom';
+        ctx.fillText(fmtKg(val),el.x,el.y-8);
+      }else{
+        ctx.fillStyle='#8b949e';
+        ctx.textBaseline='bottom';
+        ctx.fillText(fmtKg(val),el.x,el.y-2);
+      }
+      ctx.restore();
+    });
+  });
+}};
+
 function renderTable(){
   if(rawData.length===0) return;
   // salva filtros
@@ -1630,19 +1656,19 @@ function renderCharts(){
   }];
 
   const base={
-    responsive:true,maintainAspectRatio:true,
+    responsive:true,maintainAspectRatio:true,layout:{padding:{top:18}},
     plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
     scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
   };
 
   if(document.getElementById('chart-maq-bar')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-bar'),{type:'bar',data:{labels:MESES_ABREV,datasets:datasetMensal},options:base}));
+    chartInstances.push(new Chart(document.getElementById('chart-maq-bar'),{type:'bar',data:{labels:MESES_FULL,datasets:datasetMensal},options:base,plugins:[valueLabelsPlugin]}));
   }
   if(document.getElementById('chart-day-bar')){
-    chartInstances.push(new Chart(document.getElementById('chart-day-bar'),{type:'bar',data:{labels:labelsDiario,datasets:datasetDiario},options:base}));
+    chartInstances.push(new Chart(document.getElementById('chart-day-bar'),{type:'bar',data:{labels:labelsDiario,datasets:datasetDiario},options:base,plugins:[valueLabelsPlugin]}));
   }
   if(document.getElementById('chart-maq-line')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-line'),{type:'line',data:{labels:MESES_ABREV,datasets:datasetAcumulado},options:base}));
+    chartInstances.push(new Chart(document.getElementById('chart-maq-line'),{type:'line',data:{labels:MESES_FULL,datasets:datasetAcumulado},options:base,plugins:[valueLabelsPlugin]}));
   }
 }
 
