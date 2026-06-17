@@ -1509,37 +1509,67 @@ function renderCharts(){
   // lê o valor atual dos selects (se existirem) ou do localStorage
   const cAno  = document.getElementById('c-ano')  ? document.getElementById('c-ano').value  : loadFilter('graf','ano');
   const cMes  = document.getElementById('c-mes')  ? document.getElementById('c-mes').value  : loadFilter('graf','mes');
+  const cProc = document.getElementById('c-proc') ? document.getElementById('c-proc').value : loadFilter('graf','proc');
   const cMaq  = document.getElementById('c-maq')  ? document.getElementById('c-maq').value  : loadFilter('graf','maq');
   const cProd = document.getElementById('c-prod') ? document.getElementById('c-prod').value : loadFilter('graf','prod');
+
+  // listas únicas para os selects
+  const allProcessos = [...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
+
+  // máquinas filtradas pelo processo selecionado (ex: CALANDRA → só máquinas de calandra)
+  const maqSource = cProc ? rawData.filter(r=>r.proc===cProc) : rawData;
+  const allMaquinas = [...new Set(maqSource.map(r=>r.maq).filter(Boolean))].sort();
+  // se a máquina selecionada não pertence ao processo atual, reseta
+  const cMaqValid = allMaquinas.includes(cMaq) ? cMaq : '';
+
+  // produtos filtrados por processo + máquina
+  const prodSource = cMaqValid ? maqSource.filter(r=>r.maq===cMaqValid) : maqSource;
+  const allProdutos = [...new Set(prodSource.map(r=>r.produto).filter(Boolean))].sort();
+  const cProdValid = allProdutos.includes(cProd) ? cProd : '';
 
   // persiste os filtros escolhidos
   saveFilter('graf','ano', cAno);
   saveFilter('graf','mes', cMes);
-  saveFilter('graf','maq', cMaq);
-  saveFilter('graf','prod',cProd);
+  saveFilter('graf','proc',cProc);
+  saveFilter('graf','maq', cMaqValid);
+  saveFilter('graf','prod',cProdValid);
 
-  // listas únicas para os selects
-  const allMaquinas = [...new Set(rawData.map(r=>r.maq).filter(Boolean))].sort();
-  // produtos filtrados pela máquina selecionada
-  const prodSource = cMaq ? rawData.filter(r=>r.maq===cMaq) : rawData;
-  const allProdutos = [...new Set(prodSource.map(r=>r.produto).filter(Boolean))].sort();
-  // se o produto selecionado não existe na máquina atual, reseta
-  const cProdValid = allProdutos.includes(cProd) ? cProd : '';
+  const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===cAno?'selected':''}>${a}</option>`).join('');
+  const procOpts = '<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${encodeHtml(p)}"${p===cProc?'selected':''}>${p}</option>`).join('');
+  const maqOpts  = '<option value="">Todas as máquinas</option>'+allMaquinas.map(m=>`<option value="${encodeHtml(m)}"${m===cMaqValid?'selected':''}>${m}</option>`).join('');
+  const prodOpts = '<option value="">Todos os produtos</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?'selected':''}>${p}</option>`).join('');
 
-  // filtro para tabela diária de gráficos
-  const filtGraf = rawData.filter(r=>{
-    if(cAno  && !r.date.startsWith(cAno)) return false;
-    if(cMes  && parseInt(r.date.substring(5,7))!==parseInt(cMes)) return false;
-    if(cMaq  && r.maq!==cMaq) return false;
+  // ── dados filtrados por processo + máquina + produto (sem ano/mês ainda)
+  const baseFilt = rawData.filter(r=>{
+    if(cProc && r.proc!==cProc) return false;
+    if(cMaqValid && r.maq!==cMaqValid) return false;
     if(cProdValid && r.produto!==cProdValid) return false;
     return true;
   });
 
-  // montar HTML da página de gráficos
-  const maqOpts = '<option value="">Todas as máquinas</option>'+allMaquinas.map(m=>`<option value="${m}"${m===cMaq?'selected':''}>${m}</option>`).join('');
-  const prodOpts= '<option value="">Todos os produtos</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?'selected':''}>${p}</option>`).join('');
-  const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
-  const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===cAno?'selected':''}>${a}</option>`).join('');
+  // ── ano usado nos gráficos (Jan-Dez): o selecionado, ou o mais recente com dados
+  const anosComDados=[...new Set(baseFilt.map(r=>r.date.substring(0,4)))].sort();
+  const anoChart = cAno || anosComDados[anosComDados.length-1] || anosDisp[anosDisp.length-1] || '';
+
+  // ── dados do ano alvo, agrupados por mês (Jan..Dez)
+  const dadosAno = anoChart ? baseFilt.filter(r=>r.date.startsWith(anoChart)) : [];
+  const kgPorMes = Array(12).fill(0);
+  dadosAno.forEach(r=>{ const m=parseInt(r.date.substring(5,7))-1; if(m>=0&&m<12) kgPorMes[m]+=r.kg; });
+
+  // ── mês usado no gráfico diário: o selecionado, ou o mais recente com dados no ano alvo
+  const mesesComDados=[...new Set(dadosAno.map(r=>parseInt(r.date.substring(5,7))))].sort((a,b)=>a-b);
+  const mesChart = parseInt(cMes) || mesesComDados[mesesComDados.length-1] || (new Date()).getMonth()+1;
+
+  // ── dados diários do mês/ano alvo
+  const diasDoMes = anoChart ? todosOsDias(anoChart, mesChart) : [];
+  const byDay={};
+  dadosAno.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+r.kg;});
+  const kgPorDia = diasDoMes.map(d=>byDay[d]||0);
+  const labelsDiario = diasDoMes.map(d=>d.substring(8,10));
+
+  const labelMaq = cMaqValid ? encodeHtml(cMaqValid) : 'Total (todas as máquinas)';
+  const labelMes = anoChart ? `${MESES_FULL[mesChart-1]}/${anoChart}` : 'sem dados';
 
   document.getElementById('charts-container').innerHTML=`
     <!-- FILTROS GRÁFICOS -->
@@ -1556,113 +1586,64 @@ function renderCharts(){
           <option value="9"${cMes==='9'?'selected':''}>Setembro</option><option value="10"${cMes==='10'?'selected':''}>Outubro</option>
           <option value="11"${cMes==='11'?'selected':''}>Novembro</option><option value="12"${cMes==='12'?'selected':''}>Dezembro</option>
         </select></div>
+      <div class="filter-group"><label>Processo</label>
+        <select id="c-proc" onchange="renderCharts()">${procOpts}</select></div>
       <div class="filter-group"><label>Máquina (Supl.2)</label>
         <select id="c-maq" onchange="renderCharts()">${maqOpts}</select></div>
       <div class="filter-group"><label>Produto</label>
         <select id="c-prod" onchange="renderCharts()" style="min-width:200px">${prodOpts}</select></div>
     </div>
 
-    <!-- TABELA DIÁRIA -->
-    <div class="section-title">Produção por Dia — detalhe</div>
-    <div id="chart-day-table" style="margin-bottom:28px"></div>
-
-    <!-- GRÁFICOS MENSAIS -->
-    <div class="section-title">Produção Mensal por Máquina</div>
+    <!-- MENSAL JAN-DEZ (1 MÁQUINA POR VEZ) -->
+    <div class="section-title">Produção Mensal — ${labelMaq} — ${anoChart||'—'}</div>
     <div class="chart-box"><canvas id="chart-maq-bar"></canvas></div>
-    <div class="section-title">Evolução Mensal (Acumulada)</div>
+
+    <!-- DIÁRIO DENTRO DO MÊS -->
+    <div class="section-title">Produção Diária — ${labelMaq} — ${labelMes}</div>
+    <div class="chart-box"><canvas id="chart-day-bar"></canvas></div>
+
+    <!-- EVOLUÇÃO ACUMULADA NO ANO -->
+    <div class="section-title">Evolução Mensal (Acumulada) — ${labelMaq} — ${anoChart||'—'}</div>
     <div class="chart-box"><canvas id="chart-maq-line"></canvas></div>
   `;
 
-  // ---- TABELA DIÁRIA ----
-  buildChartDayTable(filtGraf, cAno, cMes);
+  const corMensal='#58a6ff', corDiario='#d29922', corAcum='#3fb950';
 
-  // ---- GRÁFICO POR MÁQUINA ----
-  // dados agrupados por mês×máquina (filtro: só ano+mes, sem filtro de maq)
-  const filtMes = rawData.filter(r=>{
-    if(cAno && !r.date.startsWith(cAno)) return false;
-    if(cMes && parseInt(r.date.substring(5,7))!==parseInt(cMes)) return false;
-    if(cProdValid && r.produto!==cProdValid) return false;
-    return true;
-  });
+  const datasetMensal=[{
+    label:labelMaq,
+    data:kgPorMes.map(v=>Math.round(v)),
+    backgroundColor:corMensal+'b3', borderColor:corMensal, borderWidth:1, borderRadius:4
+  }];
 
-  const byMaqMes = {};  // maq → {ym: kg}
-  filtMes.forEach(r=>{
-    const maq=r.maq||'(sem máquina)';
-    const ym=r.date.substring(0,7);
-    if(!byMaqMes[maq]) byMaqMes[maq]={};
-    byMaqMes[maq][ym]=(byMaqMes[maq][ym]||0)+r.kg;
-  });
+  const datasetDiario=[{
+    label:labelMaq,
+    data:kgPorDia.map(v=>Math.round(v)),
+    backgroundColor:corDiario+'b3', borderColor:corDiario, borderWidth:1, borderRadius:3
+  }];
 
-  const ymAll=[...new Set(filtMes.map(r=>r.date.substring(0,7)))].sort();
-  const labelsBar=ymAll.map(k=>{const[y,m]=k.split('-');return MESES_ABREV[parseInt(m)-1]+'/'+y.substring(2);});
-  const maqList=Object.keys(byMaqMes).sort();
-
-  const PALETTE=['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#ff9500','#00b4d8','#e76f51','#a8dadc','#f4a261'];
-  const barDatasets=maqList.map((maq,i)=>({
-    label:maq,
-    data:ymAll.map(ym=>Math.round(byMaqMes[maq][ym]||0)),
-    backgroundColor:PALETTE[i%PALETTE.length]+'b3',
-    borderColor:PALETTE[i%PALETTE.length],
-    borderWidth:1,borderRadius:3
-  }));
-
-  const lineDatasets=maqList.map((maq,i)=>{
-    let acc=0;
-    return {
-      label:maq,
-      data:ymAll.map(ym=>{acc+=byMaqMes[maq][ym]||0;return Math.round(acc);}),
-      borderColor:PALETTE[i%PALETTE.length],
-      backgroundColor:'transparent',
-      tension:.4,pointRadius:4,borderWidth:2,
-      pointBackgroundColor:PALETTE[i%PALETTE.length]
-    };
-  });
+  let acc=0;
+  const datasetAcumulado=[{
+    label:labelMaq,
+    data:kgPorMes.map(v=>{acc+=v; return Math.round(acc);}),
+    borderColor:corAcum, backgroundColor:'transparent',
+    tension:.4, pointRadius:4, borderWidth:2, pointBackgroundColor:corAcum
+  }];
 
   const base={
     responsive:true,maintainAspectRatio:true,
-    plugins:{legend:{labels:{color:'#8b949e',font:{size:11}}},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
-    scales:{x:{stacked:true,ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{stacked:true,ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
+    scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
   };
 
   if(document.getElementById('chart-maq-bar')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-bar'),{type:'bar',data:{labels:labelsBar,datasets:barDatasets},options:{...base}}));
+    chartInstances.push(new Chart(document.getElementById('chart-maq-bar'),{type:'bar',data:{labels:MESES_ABREV,datasets:datasetMensal},options:base}));
+  }
+  if(document.getElementById('chart-day-bar')){
+    chartInstances.push(new Chart(document.getElementById('chart-day-bar'),{type:'bar',data:{labels:labelsDiario,datasets:datasetDiario},options:base}));
   }
   if(document.getElementById('chart-maq-line')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-line'),{type:'line',data:{labels:labelsBar,datasets:lineDatasets},options:{...base,scales:{...base.scales,x:{...base.scales.x,stacked:false},y:{...base.scales.y,stacked:false}}}}));
+    chartInstances.push(new Chart(document.getElementById('chart-maq-line'),{type:'line',data:{labels:MESES_ABREV,datasets:datasetAcumulado},options:base}));
   }
-}
-
-function buildChartDayTable(data, ano, mes){
-  const el=document.getElementById('chart-day-table');
-  if(!el) return;
-
-  const byDay={};
-  data.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+r.kg;});
-
-  let days;
-  if(ano&&mes)       days=todosOsDias(ano,mes);
-  else if(ano&&!mes){ const ms=[...new Set(rawData.filter(r=>r.date.startsWith(ano)).map(r=>r.date.substring(5,7)))].sort(); days=[]; ms.forEach(m=>days=days.concat(todosOsDias(ano,parseInt(m)))); }
-  else               days=[...new Set(data.map(r=>r.date))].sort();
-
-  if(days.length===0){el.innerHTML='<div class="empty" style="padding:20px"><p>Sem dados para o período selecionado.</p></div>';return;}
-
-  let acum=0;
-  const rows=days.map(d=>{
-    const kg=byDay[d]||0; acum+=kg;
-    return {d,kg,acum,semDados:kg===0};
-  });
-
-  const thead=`<thead><tr><th>Data</th><th>Dia</th><th>Produzido (KG)</th><th>Acumulado (KG)</th></tr></thead>`;
-  const tbody=rows.map(r=>{
-    const dow=SEMANA[new Date(r.d+'T12:00:00').getDay()];
-    const isWE=dow==='Dom'||dow==='Sáb';
-    const trStyle=isWE?'style="background:rgba(110,118,129,.04)"':'';
-    const kgTd=r.semDados?`<td class="sem-prod">—</td>`:`<td style="color:var(--green);font-weight:600">${fmtKg(r.kg)}</td>`;
-    const acTd=r.acum>0?`<td style="color:#4ade80;font-weight:500">${fmtKg(r.acum)}</td>`:`<td style="color:var(--text3)">—</td>`;
-    return `<tr ${trStyle}><td>${fmtDate(r.d)}</td><td style="color:${isWE?'var(--text3)':'var(--text2)'};font-size:12px">${dow}</td>${kgTd}${acTd}</tr>`;
-  }).join('');
-
-  el.innerHTML=`<div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
 }
 
 function encodeHtml(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
