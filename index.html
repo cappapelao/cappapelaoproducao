@@ -391,7 +391,12 @@ td.sem-prod{color:var(--text3);}
 
   <!-- METAS -->
   <div class="page" id="page-metas">
-    <div class="meta-form">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+      <div class="section-title" style="margin:0">Cadastro de Metas</div>
+      <button class="btn-save" style="margin-top:0;width:auto" onclick="toggleMetaForm()" id="btn-toggle-meta-form">+ Incluir Meta</button>
+    </div>
+
+    <div class="meta-form" id="meta-form-wrap" style="display:none;margin-bottom:24px">
       <h3>➕ Adicionar Meta</h3>
       <div class="form-row">
         <div class="form-group"><label>Ano</label><input type="number" id="m-ano" placeholder="2026" min="2020" max="2099"/></div>
@@ -421,9 +426,41 @@ td.sem-prod{color:var(--text3);}
       </div>
       <div class="form-group" style="margin-bottom:12px"><label>Meta Mensal Total (KG)</label><input type="number" id="m-valor" placeholder="Ex: 500000" min="0"/></div>
       <div class="form-group" style="margin-bottom:12px"><label>Dias Úteis no Mês</label><input type="number" id="m-dias" placeholder="Ex: 22" min="1" max="31"/></div>
-      <button class="btn-save" onclick="salvarMeta()">Salvar Meta</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn-save" onclick="salvarMeta()">Salvar Meta</button>
+        <button class="btn-reimport" onclick="toggleMetaForm(false)">Cancelar</button>
+      </div>
     </div>
-    <div id="meta-list" style="margin-top:24px"></div>
+
+    <div class="filters" id="meta-filters">
+      <div class="filter-group"><label>Ano</label><select id="mf-ano" onchange="renderMetaList()"><option value="">Todos</option></select></div>
+      <div class="filter-group"><label>Mês</label>
+        <select id="mf-mes" onchange="renderMetaList()">
+          <option value="">Todos</option>
+          <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+          <option value="3">Março</option><option value="4">Abril</option>
+          <option value="5">Maio</option><option value="6">Junho</option>
+          <option value="7">Julho</option><option value="8">Agosto</option>
+          <option value="9">Setembro</option><option value="10">Outubro</option>
+          <option value="11">Novembro</option><option value="12">Dezembro</option>
+        </select>
+      </div>
+      <div class="filter-group"><label>Processo</label>
+        <select id="mf-proc" onchange="renderMetaList()">
+          <option value="">Todos</option>
+          <option value="__GERAL__">— Geral (sem processo) —</option>
+          <option value="CALANDRA">CALANDRA</option>
+          <option value="CORTE">CORTE</option>
+          <option value="EXPEDIÇÃO (APONTAMENTO)">EXPEDIÇÃO (APONTAMENTO)</option>
+          <option value="FOLHADEIRA">FOLHADEIRA</option>
+          <option value="HOLANDEZA">HOLANDEZA</option>
+          <option value="QUALIDADE (INSPEÇÃO)">QUALIDADE (INSPEÇÃO)</option>
+          <option value="SECADOR">SECADOR</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="meta-list" style="margin-top:8px"></div>
   </div>
 </div>
 
@@ -1134,6 +1171,7 @@ function goPage(p){
   if(p==='graficos') renderCharts();
   if(p==='qualidade') renderQualidade();
   if(p==='global') renderGlobal();
+  if(p==='metas') renderMetaList();
 }
 function toggleMenu(){document.getElementById('nav-tabs').classList.toggle('open');}
 
@@ -1695,6 +1733,21 @@ function loadMetas(){try{const s=localStorage.getItem('prod_metas');if(s)metas=J
 function saveMetas(){localStorage.setItem('prod_metas',JSON.stringify(metas));}
 loadMetas();
 
+function toggleMetaForm(show){
+  const wrap=document.getElementById('meta-form-wrap');
+  const open = show!==undefined ? show : (wrap.style.display==='none');
+  wrap.style.display = open ? 'block' : 'none';
+  document.getElementById('btn-toggle-meta-form').textContent = open ? '✕ Fechar' : '+ Incluir Meta';
+  if(open){
+    document.getElementById('m-ano').value='';
+    document.getElementById('m-mes').value='1';
+    document.getElementById('m-proc').value='';
+    document.getElementById('m-valor').value='';
+    document.getElementById('m-dias').value='';
+    document.getElementById('m-ano').focus();
+  }
+}
+
 function salvarMeta(){
   const ano=document.getElementById('m-ano').value;
   const mes=document.getElementById('m-mes').value;
@@ -1709,6 +1762,7 @@ function salvarMeta(){
   salvarMetaSupabase(ano, mes, proc, val, dias);
   salvarDadosLocais();
   renderMetaList();
+  toggleMetaForm(false);
   toast('Meta salva!','success');
 }
 function deleteMeta(key){
@@ -1722,9 +1776,36 @@ function deleteMeta(key){
   renderMetaList();
   toast('Meta removida.','success');
 }
+function popularFiltrosMeta(){
+  const selAno=document.getElementById('mf-ano');
+  if(!selAno) return;
+  const anos=[...new Set(Object.keys(metas).map(k=>k.split('|')[0].split('-')[0]))].sort().reverse();
+  const cur=selAno.value;
+  selAno.innerHTML='<option value="">Todos</option>'+anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  if(anos.includes(cur)) selAno.value=cur;
+}
 function renderMetaList(){
-  const keys=Object.keys(metas).sort().reverse();
-  if(keys.length===0){document.getElementById('meta-list').innerHTML='';return;}
+  popularFiltrosMeta();
+  const fAno=document.getElementById('mf-ano')?.value||'';
+  const fMes=document.getElementById('mf-mes')?.value||'';
+  const fProc=document.getElementById('mf-proc')?.value||'';
+
+  let keys=Object.keys(metas).sort().reverse();
+  keys=keys.filter(k=>{
+    const base=k.split('|')[0];
+    const[y,m]=base.split('-');
+    const mt=metas[k];
+    if(fAno && y!==fAno) return false;
+    if(fMes && parseInt(m)!==parseInt(fMes)) return false;
+    if(fProc==='__GERAL__' && mt.proc) return false;
+    if(fProc && fProc!=='__GERAL__' && mt.proc!==fProc) return false;
+    return true;
+  });
+
+  if(keys.length===0){
+    document.getElementById('meta-list').innerHTML=Object.keys(metas).length===0?'':'<div class="empty"><p>Nenhuma meta encontrada para o filtro selecionado.</p></div>';
+    return;
+  }
   document.getElementById('meta-list').innerHTML=`
     <div class="section-title">Metas Cadastradas</div>
     ${keys.map(k=>{
