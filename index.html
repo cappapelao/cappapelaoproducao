@@ -964,18 +964,21 @@ function renderQualidade(){
     return;
   }
 
-  // meta
+  // meta — referência ao cadastro de meta (dias úteis definidos no cadastro)
   let metaDia=0;
+  let metaDiasCadastro=null;
+  let metaTotalCadastro=0;
   if(ano&&mes){
     const baseKey=`${ano}-${String(mes).padStart(2,'0')}`;
     const m=metas[`${baseKey}|${PROC}`]||metas[baseKey];
-    if(m&&m.dias>0) metaDia=m.meta/m.dias;
+    if(m&&m.dias>0){ metaDia=m.meta/m.dias; metaDiasCadastro=m.dias; metaTotalCadastro=m.meta; }
   }
+  const diasMeta = metaDiasCadastro!==null ? metaDiasCadastro : days.length;
 
   let acum=0;
   const rows=days.map((d,i)=>{
     const kg=byDay[d]||0; acum+=kg;
-    const metaAcum=metaDia*(i+1);
+    const metaAcum=metaDia*Math.min(i+1,diasMeta);
     const pct=metaAcum>0?Math.round(acum/metaAcum*100):null;
     return {d,kg,acum,metaDia,metaAcum,pct,semDados:kg===0};
   });
@@ -983,7 +986,7 @@ function renderQualidade(){
   const total=acum;
   const diasComProd=rows.filter(r=>r.kg>0).length;
   const media=diasComProd>0?total/diasComProd:0;
-  const metaTotalAcum=metaDia*days.length;
+  const metaTotalAcum=metaDiasCadastro!==null?metaTotalCadastro:metaDia*days.length;
   const pctGeral=metaTotalAcum>0?Math.round(total/metaTotalAcum*100):null;
 
   document.getElementById('q-cards').innerHTML=`
@@ -991,7 +994,7 @@ function renderQualidade(){
       <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtKg(total)}</span><span class="card-sub">KG — Qualidade</span></div>
       <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtKg(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
       ${metaDia>0?`<div class="card yellow"><span class="card-label">Meta Diária</span><span class="card-value">${fmtKg(metaDia)}</span><span class="card-sub">KG/dia</span></div>`:''}
-      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${days.length} dias × ${fmtKg(metaDia)}</span></div>`:''}
+      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${diasMeta} dias × ${fmtKg(metaDia)}</span></div>`:''}
       ${pctGeral!==null?`<div class="card ${pctGeral>=100?'green':pctGeral>=80?'yellow':'red'}"><span class="card-label">% Acumulado/Meta</span><span class="card-value">${pctGeral}%</span><span class="card-sub">${fmtKg(total)} produzido</span></div>`:''}
     </div>`;
 
@@ -1455,22 +1458,26 @@ function renderTable(){
   // se veio do calendário mas byDay está vazio (processo sem dados no mês), mostra tabela zerada
 
   // meta — busca por processo específico primeiro, depois geral
+  // referência ao cadastro de meta (dias úteis definidos no cadastro)
   let metaDia=0;
+  let metaDiasCadastro=null;
+  let metaTotalCadastro=0;
   if(ano&&mes){
     const baseKey=`${ano}-${String(mes).padStart(2,'0')}`;
     const procKey=proc?`${baseKey}|${proc}`:null;
     const m=(procKey&&metas[procKey])||metas[baseKey];
-    if(m&&m.dias>0) metaDia=m.meta/m.dias;
+    if(m&&m.dias>0){ metaDia=m.meta/m.dias; metaDiasCadastro=m.dias; metaTotalCadastro=m.meta; }
   }
+  const diasMeta = metaDiasCadastro!==null ? metaDiasCadastro : days.length;
 
   // build rows — acumulado conta só dias com produção para meta acum
   let acum=0;
-  let diaUtil=0; // contador de dias com meta (acumula meta para cada dia)
+  let diaUtil=0; // contador de dias com meta (não passa do total de dias cadastrado)
   const rows=days.map(d=>{
     const kg=byDay[d]||0;
     acum+=kg;
     diaUtil++;
-    const metaAcum=metaDia*diaUtil;
+    const metaAcum=metaDia*Math.min(diaUtil,diasMeta);
     const pct=metaAcum>0?Math.round(acum/metaAcum*100):null;
     const semDados=kg===0;
     return {d,kg,acum,metaDia,metaAcum,pct,semDados};
@@ -1479,7 +1486,7 @@ function renderTable(){
   // cards — usando apenas dias com produção para médias
   const diasComProd=rows.filter(r=>r.kg>0).length;
   const total=acum;
-  const metaTotalAcum=metaDia*days.length;
+  const metaTotalAcum=metaDiasCadastro!==null?metaTotalCadastro:metaDia*days.length;
   const pctGeral=metaTotalAcum>0?Math.round(total/metaTotalAcum*100):null;
   const media=diasComProd>0?total/diasComProd:0;
 
@@ -1488,7 +1495,7 @@ function renderTable(){
       <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtKg(total)}</span><span class="card-sub">KG no período</span></div>
       <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtKg(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
       ${metaDia>0?`<div class="card yellow"><span class="card-label">Meta Diária</span><span class="card-value">${fmtKg(metaDia)}</span><span class="card-sub">KG/dia</span></div>`:''}
-      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${days.length} dias × ${fmtKg(metaDia)} KG</span></div>`:''}
+      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${diasMeta} dias × ${fmtKg(metaDia)} KG</span></div>`:''}
       ${pctGeral!==null?`<div class="card ${pctGeral>=100?'green':pctGeral>=80?'yellow':'red'}"><span class="card-label">% Acumulado/Meta</span><span class="card-value">${pctGeral}%</span><span class="card-sub">${fmtKg(total)} produzido</span></div>`:''}
     </div>`;
 
