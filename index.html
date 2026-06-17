@@ -1095,8 +1095,8 @@ function renderGlobal(){
     </div>`;
 
   const base={
-    responsive:true,maintainAspectRatio:true,layout:{padding:{top:18}},
-    plugins:{legend:{labels:{color:'#8b949e',font:{size:12}}},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
+    responsive:true,maintainAspectRatio:true,layout:{padding:{top:30}},
+    plugins:{legend:{labels:{color:'#8b949e',font:{size:12},padding:24,boxWidth:14,boxHeight:14}},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
     scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
   };
 
