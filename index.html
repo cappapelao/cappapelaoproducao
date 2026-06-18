@@ -657,7 +657,7 @@ function iniciarPingSupabase(){
   if(pingTimer) clearInterval(pingTimer);
   pingTimer = setInterval(async ()=>{
     try {
-      await fetch(`${SB_URL}/producao?select=id&limit=1`, { headers: SB_HEADERS });
+      await fetch(`${SB_URL}/producao_admin?select=id&limit=1`, { headers: SB_HEADERS });
     } catch(e){ /* silencioso — só mantém a conexão viva */ }
   }, 4 * 60 * 1000); // 4 minutos
 }
@@ -687,8 +687,8 @@ async function verificarSupabase(){
   const info  = document.getElementById('server-info');
   try {
     // pega só 1 registro para testar conexão e contar total
-    const [row] = await sbFetch('producao', 'select=data&limit=1&order=data.desc');
-    const countR = await fetch(`${SB_URL}/producao?select=id`, {
+    const [row] = await sbFetch('producao_admin', 'select=data&limit=1&order=data.desc');
+    const countR = await fetch(`${SB_URL}/producao_admin?select=id`, {
       headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' }
     });
     const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
@@ -745,7 +745,7 @@ async function buscarDoServidor(){
     }
 
     // Conta total de registros primeiro
-    const countR = await fetch(`${SB_URL}/producao?select=id`, {
+    const countR = await fetch(`${SB_URL}/producao_admin?select=id`, {
       headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' }
     });
     const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
@@ -764,7 +764,7 @@ async function buscarDoServidor(){
     const promises = [];
     for(let i = 0; i < numLotes; i++){
       promises.push(
-        sbFetch('producao',
+        sbFetch('producao_admin',
           `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${i * TAM}`)
       );
     }
@@ -948,7 +948,7 @@ async function importarTxtParaSupabase(file){
 
   // Tenta RPC truncate primeiro (mais confiável)
   try{
-    const rpc = await fetch(`${SB_URL}/rpc/truncar_producao`,{
+    const rpc = await fetch(`${SB_URL}/rpc/truncar_producao_admin`,{
       method:'POST',
       headers:{...SB_HEADERS,'Content-Type':'application/json'},
       body:'{}'
@@ -965,7 +965,7 @@ async function importarTxtParaSupabase(file){
   if(!deletedOk){
     for(const filtro of ['data=not.is.null','kg=gte.0','id=gt.0']){
       try{
-        const del = await fetch(`${SB_URL}/producao?${filtro}`,{
+        const del = await fetch(`${SB_URL}/producao_admin?${filtro}`,{
           method:'DELETE', headers:{...SB_HEADERS,'Prefer':'return=minimal'}
         });
         if(del.ok){ deletedOk = true; break; }
@@ -1002,7 +1002,7 @@ async function importarTxtParaSupabase(file){
   for(let g = 0; g < lotes.length; g += PARALELO){
     const grupo = lotes.slice(g, g+PARALELO);
     const res = await Promise.all(grupo.map(lote =>
-      fetch(`${SB_URL}/producao`,{
+      fetch(`${SB_URL}/producao_admin`,{
         method:'POST',
         headers:{...SB_HEADERS,'Content-Type':'application/json','Prefer':'return=minimal'},
         body:JSON.stringify(lote)
@@ -1025,7 +1025,7 @@ async function importarTxtParaSupabase(file){
   statusEl.textContent = '🔍 Verificando registros no Supabase...';
   let countReal = 0;
   try{
-    const cr = await fetch(`${SB_URL}/producao?select=id`,{
+    const cr = await fetch(`${SB_URL}/producao_admin?select=id`,{
       headers:{...SB_HEADERS,'Prefer':'count=exact','Range':'0-0'}
     });
     countReal = parseInt(cr.headers.get('content-range')?.split('/')?.[1]||'0');
@@ -1050,12 +1050,24 @@ async function importarTxtParaSupabase(file){
 
   // 7. Recarrega dados e atualiza UI
   btn.disabled = false;
-  setTimeout(async () => {
-    statusEl.textContent = '🔄 Recarregando dados...';
-    await buscarDoServidor();
-    await carregarUltimoEnvio();
-    setTimeout(() => { progDiv.style.display='none'; bar.style.width='0%'; }, 3000);
-  }, 1000);
+
+  // Usa os dados locais diretamente — não rebusca do Supabase para evitar
+  // que um sincronizador externo sobrescreva os dados antes da tela atualizar
+  rawData = dados;
+  salvarDadosLocais();
+  popularFiltros();
+
+  // Atualiza UI com os dados importados
+  const anosImp = [...new Set(dados.map(r=>r.date.substring(0,4)))].sort();
+  document.getElementById('file-name').textContent = `☁️ ${file.name}`;
+  document.getElementById('file-stats').textContent = `${dados.length.toLocaleString('pt-BR')} registros · ${anosImp.join(', ')}`;
+  document.getElementById('file-loaded').style.display = 'flex';
+  document.getElementById('no-data-msg').style.display = 'none';
+  document.getElementById('dashboard-content').style.display = 'block';
+  renderTable();
+
+  await carregarUltimoEnvio();
+  setTimeout(() => { progDiv.style.display='none'; bar.style.width='0%'; }, 4000);
 }
 
 async function carregarUltimoEnvio(){
