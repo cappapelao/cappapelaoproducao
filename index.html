@@ -784,27 +784,12 @@ async function buscarDoServidor(){
       };
     }).filter(r => r.date.length === 10);
 
-    // Captura o tamanho do cache local ANTES de sobrescrever rawData
-    const cacheAnterior = (() => {
-      try {
-        const rd = localStorage.getItem('dash_rawData');
-        return rd ? JSON.parse(rd).length : 0;
-      } catch(e) { return 0; }
-    })();
-
-    // Deduplica por chave composta (data+proc+maq+kg)
-    const visto = new Set();
-    const deduplicado = normalizado.filter(r => {
-      const chave = `${r.date}|${r.proc}|${r.maq}|${r.kg}`;
-      if(visto.has(chave)) return false;
-      visto.add(chave);
-      return true;
-    });
-
-    rawData = deduplicado;
+    // Sem deduplicação — dados chegam limpos via importação controlada
+    // (a deduplicação por kg causava perda de dados por imprecisão de float no Supabase)
+    rawData = normalizado;
     salvarDadosLocais();
 
-    console.log(`Supabase: ${todos.length} brutos → ${rawData.length} únicos (cache anterior: ${cacheAnterior})`);
+    console.log(`Supabase: ${rawData.length} registros carregados`);
 
     await carregarMetasSupabase();
     popularFiltros();
@@ -831,13 +816,11 @@ async function buscarDoServidor(){
       else if(idPag === 'page-graficos') renderCharts();
     }
 
-    const duplicatas = todos.length - rawData.length;
+    const duplicatas = 0; // dedup removida
 
     const infoEl = document.getElementById('server-info');
     if(infoEl){
-      infoEl.innerHTML += duplicatas > 0
-        ? `<br><b>Registros únicos:</b> ${rawData.length.toLocaleString('pt-BR')} <span style="color:var(--yellow)">(${duplicatas.toLocaleString('pt-BR')} duplicados na tabela)</span>`
-        : `<br><b>Registros únicos:</b> ${rawData.length.toLocaleString('pt-BR')}`;
+      infoEl.innerHTML += `<br><b>Carregados:</b> ${rawData.length.toLocaleString('pt-BR')} registros`;
     }
 
     if(temDadosNaTela){
