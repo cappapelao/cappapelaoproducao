@@ -220,7 +220,7 @@ td.sem-prod{color:var(--text3);}
             Carregando informações do servidor...
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-            <button onclick="buscarDoServidor(true)" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
+            <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
           </div>
         </div>
 
@@ -697,7 +697,7 @@ async function verificarSupabase(){
   }
 }
 
-async function buscarDoServidor(forcar = false){
+async function buscarDoServidor(){
   const ok = await verificarSupabase();
   if(!ok) return;
 
@@ -771,7 +771,7 @@ async function buscarDoServidor(forcar = false){
       } catch(e) { return 0; }
     })();
 
-    // Deduplica por chave composta (data+proc+maq+kg) — evita somar duplicatas do Supabase
+    // Deduplica por chave composta (data+proc+maq+kg)
     const visto = new Set();
     const deduplicado = normalizado.filter(r => {
       const chave = `${r.date}|${r.proc}|${r.maq}|${r.kg}`;
@@ -780,19 +780,10 @@ async function buscarDoServidor(forcar = false){
       return true;
     });
 
-    // Se forcar=true (pós-importação explícita), sempre aceita o dado do Supabase.
-    // Se forcar=false (auto-startup/refresh), só substitui se Supabase >= cache local.
-    if(forcar || deduplicado.length >= cacheAnterior){
-      rawData = deduplicado;
-      salvarDadosLocais();
-    } else {
-      console.warn(`Supabase retornou ${deduplicado.length} únicos < cache local (${cacheAnterior}) — rawData preservado`);
-      toast(`⚠️ Supabase tem menos dados (${deduplicado.length}) que o cache local (${cacheAnterior}). Dados locais mantidos.`, 'error');
-      const ov = getOverlay(); if(ov) ov.remove();
-      return;
-    }
+    rawData = deduplicado;
+    salvarDadosLocais();
 
-    console.log(`Supabase: ${todos.length} registros brutos → ${rawData.length} após deduplicação`);
+    console.log(`Supabase: ${todos.length} brutos → ${rawData.length} únicos (cache anterior: ${cacheAnterior})`);
 
     await carregarMetasSupabase();
     popularFiltros();
@@ -983,7 +974,7 @@ async function importarTxtParaSupabase(file){
   btn.disabled = false;
   setTimeout(async () => {
     statusEl.textContent = '🔄 Recarregando dados do Supabase...';
-    await buscarDoServidor(true); // forcar=true: ignora cache local, sempre aceita dado novo
+    await buscarDoServidor(); // forcar=true: ignora cache local, sempre aceita dado novo
     setTimeout(() => { progDiv.style.display = 'none'; bar.style.width = '0%'; }, 3000);
   }, 1200);
 }
@@ -1015,7 +1006,7 @@ async function enviarTxtParaSupabase(){ /* substituído por importarTxtParaSupab
 
 function forcarAtualizacaoServidor(){
   toast('Atualizando do Supabase...','success');
-  buscarDoServidor(true);
+  buscarDoServidor();
 }
 
 
