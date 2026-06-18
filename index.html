@@ -1384,7 +1384,18 @@ function handleFile(file){
     try{
       const parsed=parseTxtCSV(e.target.result);
       if(parsed.length===0){toast('Nenhum dado válido encontrado.','error');return;}
-      rawData=parsed;
+
+      // Deduplica pelo mesmo critério do Supabase (data+proc+maq+kg)
+      // Garante que localStorage e Supabase sempre comparam registros únicos
+      const vistoTxt = new Set();
+      rawData = parsed.filter(r => {
+        const chave = `${r.date}|${r.proc}|${r.maq}|${r.kg}`;
+        if(vistoTxt.has(chave)) return false;
+        vistoTxt.add(chave);
+        return true;
+      });
+      const txtDuplicatas = parsed.length - rawData.length;
+      if(txtDuplicatas > 0) console.log(`TXT: ${parsed.length} brutos → ${rawData.length} únicos (${txtDuplicatas} duplicatas removidas)`);
 
       // anos
       const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
