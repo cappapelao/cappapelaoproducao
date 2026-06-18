@@ -1008,6 +1008,7 @@ async function importarTxtParaSupabase(file){
   const LOTE = 1000, PARALELO = 5;
   const total = dados.length;
   let enviados = 0, erros = 0;
+  let primeiroErro = '';
   const lotes = [];
   for(let i = 0; i < total; i += LOTE){
     lotes.push(dados.slice(i,i+LOTE).map(r =>({
@@ -1025,20 +1026,40 @@ async function importarTxtParaSupabase(file){
       }).then(async r => ({ok:r.ok, n:lote.length, err:r.ok?'':await r.text()}))
         .catch(e => ({ok:false, n:lote.length, err:e.message}))
     ));
-    res.forEach(r => { if(r.ok) enviados+=r.n; else { erros+=r.n; console.warn(r.err); }});
+    res.forEach(r => {
+      if(r.ok) enviados+=r.n;
+      else { erros+=r.n; if(!primeiroErro) primeiroErro=r.err; console.error('INSERT falhou:', r.err); }
+    });
     const pct = Math.round(Math.min(g+PARALELO, lotes.length)/lotes.length*100);
-    bar.style.width = pct+'%';
-    statusEl.textContent = `📤 Enviando... ${enviados.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} (${pct}%)`;
+    bar.style.width = (12 + pct*0.8)+'%';
+    statusEl.textContent = erros > 0
+      ? `⚠️ ${enviados.toLocaleString('pt-BR')} ok / ${erros} erros — ${primeiroErro.substring(0,100)}`
+      : `📤 Enviando... ${enviados.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} (${pct}%)`;
   }
 
-  // 5. Resultado
+  // 5. Verifica count real no Supabase após inserção
+  bar.style.width = '95%';
+  statusEl.textContent = '🔍 Verificando registros no Supabase...';
+  let countReal = 0;
+  try{
+    const cr = await fetch(`${SB_URL}/producao?select=id`,{
+      headers:{...SB_HEADERS,'Prefer':'count=exact','Range':'0-0'}
+    });
+    countReal = parseInt(cr.headers.get('content-range')?.split('/')?.[1]||'0');
+  }catch(e){}
+
+  // 5b. Resultado
   bar.style.width = '100%';
-  if(erros === 0){
-    statusEl.textContent = `✅ ${enviados.toLocaleString('pt-BR')} registros importados com sucesso!`;
+  if(erros === 0 && countReal === total){
+    statusEl.textContent = `✅ ${enviados.toLocaleString('pt-BR')} registros gravados. Supabase confirmado: ${countReal.toLocaleString('pt-BR')} registros.`;
     toast(`${enviados.toLocaleString('pt-BR')} registros importados!`,'success');
+  } else if(erros > 0){
+    statusEl.textContent = `❌ ${erros.toLocaleString('pt-BR')} erros de inserção. Erro: ${primeiroErro.substring(0,150)}`;
+    toast(`Erro na inserção: ${primeiroErro.substring(0,80)}`,'error');
+    btn.disabled = false; return;
   } else {
-    statusEl.textContent = `⚠️ ${enviados.toLocaleString('pt-BR')} importados, ${erros} com erro.`;
-    toast('Importação parcial: '+erros+' erros.','error');
+    statusEl.textContent = `⚠️ Inserção: ${enviados.toLocaleString('pt-BR')} enviados. Supabase tem ${countReal.toLocaleString('pt-BR')} registros (esperado: ${total.toLocaleString('pt-BR')}).`;
+    toast('Importação concluída.','success');
   }
 
   // 6. Registra data/hora, arquivo e usuário no Supabase (visível em qualquer computador)
