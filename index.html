@@ -758,20 +758,27 @@ async function buscarDoServidor(){
 
     setMsg(`Baixando ${total.toLocaleString('pt-BR')} registros...`);
 
-    // Busca em lotes paralelos
-    const TAM = 1000; // Supabase limita 1000 por requisição — usar 2000 pula registros
+    // Busca sequencial em grupos de 3 — evita rate limit do Supabase com muitas requisições simultâneas
+    const TAM = 1000; // max_rows do Supabase free tier
     const numLotes = Math.ceil(total / TAM);
-    const promises = [];
-    for(let i = 0; i < numLotes; i++){
-      promises.push(
-        sbFetch('producao_admin',
-          `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${i * TAM}`)
-      );
-    }
-    const lotes = await Promise.all(promises);
-    const todos = lotes.flat();
+    const todos = [];
+    const GRUPO = 3; // requisições simultâneas por rodada
 
-    // Normaliza dados — garante formato correto de data e kg
+    for(let i = 0; i < numLotes; i += GRUPO){
+      const grupo = [];
+      for(let j = i; j < Math.min(i + GRUPO, numLotes); j++){
+        grupo.push(
+          sbFetch('producao_admin',
+            `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
+        );
+      }
+      const resultados = await Promise.all(grupo);
+      resultados.forEach(r => todos.push(...r));
+      const pct = Math.round(Math.min(i + GRUPO, numLotes) / numLotes * 100);
+      setMsg(`Baixando... ${todos.length.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} (${pct}%)`);
+    }
+
+    // Normaliza dados
     const normalizado = todos.map(r => {
       const dataStr = r.data ? String(r.data).substring(0, 10) : '';
       const kgNum = parseFloat(String(r.kg || '0').replace(',', '.'));
@@ -784,12 +791,10 @@ async function buscarDoServidor(){
       };
     }).filter(r => r.date.length === 10);
 
-    // Sem deduplicação — dados chegam limpos via importação controlada
-    // (a deduplicação por kg causava perda de dados por imprecisão de float no Supabase)
     rawData = normalizado;
     salvarDadosLocais();
 
-    console.log(`Supabase: ${rawData.length} registros carregados`);
+    console.log(`Supabase: ${todos.length} brutos → ${rawData.length} carregados`);
 
     await carregarMetasSupabase();
     popularFiltros();
