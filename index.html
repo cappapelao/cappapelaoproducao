@@ -827,6 +827,10 @@ async function buscarDoServidor(){
       toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!${duplicatas>0?' ('+duplicatas.toLocaleString('pt-BR')+' duplicatas ignoradas)':''}`,'success');
     }
 
+    // persiste os dados frescos do Supabase no localStorage
+    // assim ao reabrir o sistema não volta para o TXT antigo
+    salvarDadosLocais();
+
     // auto-refresh a cada 60 min
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(buscarDoServidor, 60*60*1000);
