@@ -784,8 +784,22 @@ async function buscarDoServidor(){
 
     console.log(`Supabase: ${todos.length} registros brutos → ${rawData.length} após deduplicação`);
 
+    // Só sobrescreve o localStorage se o Supabase tiver registros iguais ou mais
+    // que o cache local. Isso evita apagar um TXT importado localmente que ainda
+    // não foi enviado ao Supabase.
+    const cacheAnterior = (() => {
+      try {
+        const rd = localStorage.getItem('dash_rawData');
+        return rd ? JSON.parse(rd).length : 0;
+      } catch(e) { return 0; }
+    })();
+    if(rawData.length >= cacheAnterior){
+      salvarDadosLocais();
+    } else {
+      console.log(`Supabase (${rawData.length}) < cache local (${cacheAnterior}) — localStorage preservado`);
+    }
+
     await carregarMetasSupabase();
-    salvarDadosLocais();
     popularFiltros();
 
     // Remove overlay
@@ -826,10 +840,6 @@ async function buscarDoServidor(){
     } else {
       toast(`${rawData.length.toLocaleString('pt-BR')} registros carregados!${duplicatas>0?' ('+duplicatas.toLocaleString('pt-BR')+' duplicatas ignoradas)':''}`,'success');
     }
-
-    // persiste os dados frescos do Supabase no localStorage
-    // assim ao reabrir o sistema não volta para o TXT antigo
-    salvarDadosLocais();
 
     // auto-refresh a cada 60 min
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
