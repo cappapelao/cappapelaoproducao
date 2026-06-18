@@ -951,44 +951,43 @@ Os dados antigos da tabela serão APAGADOS e substituídos pelos deste arquivo.`
 
   btn.textContent='Enviando...';
 
-  const LOTE=200; // registros por request
-  const total=rawData.length;
-  let enviados=0, erros=0;
+  const LOTE = 1000;   // registros por request (Supabase suporta bem)
+  const PARALELO = 5;  // requests simultâneos
+  const total = rawData.length;
+  let enviados = 0, erros = 0;
 
   try{
-    for(let i=0;i<total;i+=LOTE){
-      const lote=rawData.slice(i,i+LOTE).map(r=>({
-        data:    r.date,
-        kg:      r.kg,
-        processo:r.proc   || '',
-        maquina: r.maq    || '',
-        produto: r.produto|| ''
-      }));
+    // Monta todos os lotes de uma vez
+    const lotes = [];
+    for(let i = 0; i < total; i += LOTE){
+      lotes.push(rawData.slice(i, i + LOTE).map(r=>({
+        data:     r.date,
+        kg:       r.kg,
+        processo: r.proc    || '',
+        maquina:  r.maq     || '',
+        produto:  r.produto || ''
+      })));
+    }
 
-      const resp=await fetch(`${SB_URL}/producao`,{
-        method:'POST',
-        headers:{
-          ...SB_HEADERS,
-          'Content-Type':'application/json',
-          'Prefer':'return=minimal'
-        },
-        body:JSON.stringify(lote)
-      });
+    // Envia em grupos paralelos
+    for(let g = 0; g < lotes.length; g += PARALELO){
+      const grupo = lotes.slice(g, g + PARALELO);
+      const resultados = await Promise.all(grupo.map(lote =>
+        fetch(`${SB_URL}/producao`, {
+          method: 'POST',
+          headers: { ...SB_HEADERS, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+          body: JSON.stringify(lote)
+        }).then(async resp => {
+          if(!resp.ok){ console.warn('Lote erro:', await resp.text()); return { ok:false, n:lote.length }; }
+          return { ok:true, n:lote.length };
+        }).catch(e => { console.warn('Lote falhou:', e); return { ok:false, n:lote.length }; })
+      ));
 
-      if(!resp.ok){
-        const txt=await resp.text();
-        console.warn('Lote erro:',txt);
-        erros+=lote.length;
-      } else {
-        enviados+=lote.length;
-      }
+      resultados.forEach(r => { if(r.ok) enviados += r.n; else erros += r.n; });
 
-      const pct=Math.round((i+lote.length)/total*100);
-      bar.style.width=pct+'%';
-      statusEl.textContent=`Enviando... ${(i+lote.length).toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} registros (${pct}%)`;
-
-      // pequena pausa para não sobrecarregar
-      await new Promise(r=>setTimeout(r,80));
+      const pct = Math.round(Math.min(g + PARALELO, lotes.length) / lotes.length * 100);
+      bar.style.width = pct + '%';
+      statusEl.textContent = `Enviando... ${enviados.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} registros (${pct}%)`;
     }
 
     bar.style.width='100%';
@@ -1003,8 +1002,11 @@ Os dados antigos da tabela serão APAGADOS e substituídos pelos deste arquivo.`
     // registra metadados do envio (arquivo, usuário, data/hora) — visível em qualquer computador
     await registrarUltimoEnvio(ultimoArquivoNome, enviados);
 
-    // atualiza card do Supabase
-    setTimeout(()=>verificarSupabase(), 1500);
+    // recarrega do Supabase para garantir dados corretos no localStorage e na tela
+    setTimeout(async () => {
+      statusEl.textContent = '🔄 Recarregando dados do Supabase...';
+      await buscarDoServidor();
+    }, 1500);
 
   }catch(e){
     statusEl.textContent='❌ Erro: '+e.message;
