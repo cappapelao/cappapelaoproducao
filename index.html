@@ -812,6 +812,15 @@ async function buscarDoServidor(){
 
     const duplicatas = todos.length - rawData.length;
 
+    // Mostra no card também o nº de registros únicos (após remover duplicatas),
+    // já que "Registros" no topo do card é a contagem bruta da tabela.
+    const infoEl = document.getElementById('server-info');
+    if(infoEl){
+      infoEl.innerHTML += duplicatas > 0
+        ? `<br><b>Registros únicos:</b> ${rawData.length.toLocaleString('pt-BR')} <span style="color:var(--yellow)">(${duplicatas.toLocaleString('pt-BR')} duplicados na tabela)</span>`
+        : `<br><b>Registros únicos:</b> ${rawData.length.toLocaleString('pt-BR')}`;
+    }
+
     if(temDadosNaTela){
       toast(`✓ Dados sincronizados (${rawData.length.toLocaleString('pt-BR')} registros${duplicatas>0?' — '+duplicatas.toLocaleString('pt-BR')+' duplicatas removidas':''})`,'success');
     } else {
