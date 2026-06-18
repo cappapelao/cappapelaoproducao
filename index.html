@@ -220,7 +220,7 @@ td.sem-prod{color:var(--text3);}
             Carregando informações do servidor...
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-            <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
+            <button onclick="buscarDoServidor(true)" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
           </div>
         </div>
 
@@ -528,16 +528,13 @@ function doLogin(){
     const temCache = carregarDadosLocais();
     if(temCache){
       popularFiltros();
-      document.getElementById('import-waiting').style.display='none';
+      const iwEl = document.getElementById('import-waiting'); if(iwEl) iwEl.style.display='none';
       document.getElementById('file-loaded').style.display='flex';
       document.getElementById('file-name').textContent='💾 Carregando dados atualizados...';
       const anosC=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
       document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anosC.join(', ')}`;
-      const brl=document.getElementById('btn-reimport-loaded');
-      if(brl) brl.style.display='inline-flex';
       document.getElementById('no-data-msg').style.display='none';
       document.getElementById('dashboard-content').style.display='block';
-      atualizarBtnEnviarTxt();
       renderTable();
       // Sempre atualiza do Supabase em background para garantir dados iguais em todos dispositivos
       setTimeout(async ()=>{ await buscarDoServidor(); }, 800);
@@ -700,7 +697,7 @@ async function verificarSupabase(){
   }
 }
 
-async function buscarDoServidor(){
+async function buscarDoServidor(forcar = false){
   const ok = await verificarSupabase();
   if(!ok) return;
 
@@ -783,14 +780,12 @@ async function buscarDoServidor(){
       return true;
     });
 
-    // Só substitui rawData se o Supabase tiver dados iguais ou mais que o cache local.
-    // Isso evita que um auto-sincronizador externo com dados antigos apague um TXT
-    // mais novo que foi importado localmente.
-    if(deduplicado.length >= cacheAnterior){
+    // Se forcar=true (pós-importação explícita), sempre aceita o dado do Supabase.
+    // Se forcar=false (auto-startup/refresh), só substitui se Supabase >= cache local.
+    if(forcar || deduplicado.length >= cacheAnterior){
       rawData = deduplicado;
       salvarDadosLocais();
     } else {
-      // Supabase tem menos dados — mantém o que estava no localStorage
       console.warn(`Supabase retornou ${deduplicado.length} únicos < cache local (${cacheAnterior}) — rawData preservado`);
       toast(`⚠️ Supabase tem menos dados (${deduplicado.length}) que o cache local (${cacheAnterior}). Dados locais mantidos.`, 'error');
       const ov = getOverlay(); if(ov) ov.remove();
@@ -806,7 +801,7 @@ async function buscarDoServidor(){
     const ov = getOverlay(); if(ov) ov.remove();
 
     // Atualiza indicadores
-    document.getElementById('import-waiting').style.display='none';
+    const iwEl2 = document.getElementById('import-waiting'); if(iwEl2) iwEl2.style.display='none';
     document.getElementById('file-loaded').style.display='flex';
     document.getElementById('file-name').textContent='☁️ Supabase';
     const anos=[...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
@@ -826,8 +821,6 @@ async function buscarDoServidor(){
 
     const duplicatas = todos.length - rawData.length;
 
-    // Mostra no card também o nº de registros únicos (após remover duplicatas),
-    // já que "Registros" no topo do card é a contagem bruta da tabela.
     const infoEl = document.getElementById('server-info');
     if(infoEl){
       infoEl.innerHTML += duplicatas > 0
@@ -847,15 +840,8 @@ async function buscarDoServidor(){
 
   } catch(e){
     const ov = getOverlay(); if(ov) ov.remove();
-    const zone = document.getElementById('upload-zone');
-    if(zone) zone.innerHTML = `
-      <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
-        <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
-      <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
-      <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .xlsx e .xls</p>`;
-    toast('Erro ao carregar: '+e.message,'error');
+    toast('Erro ao carregar dados: '+e.message,'error');
+    console.error('buscarDoServidor erro:', e);
   }
 }
 
@@ -997,7 +983,7 @@ async function importarTxtParaSupabase(file){
   btn.disabled = false;
   setTimeout(async () => {
     statusEl.textContent = '🔄 Recarregando dados do Supabase...';
-    await buscarDoServidor();
+    await buscarDoServidor(true); // forcar=true: ignora cache local, sempre aceita dado novo
     setTimeout(() => { progDiv.style.display = 'none'; bar.style.width = '0%'; }, 3000);
   }, 1200);
 }
@@ -1029,7 +1015,7 @@ async function enviarTxtParaSupabase(){ /* substituído por importarTxtParaSupab
 
 function forcarAtualizacaoServidor(){
   toast('Atualizando do Supabase...','success');
-  buscarDoServidor();
+  buscarDoServidor(true);
 }
 
 
@@ -1309,12 +1295,10 @@ async function initReimportarBtn(){
   try{perm=await h.queryPermission({mode:'read'});}catch(e){return;}
   if(perm==='prompt'||perm==='granted'){
     _savedFileHandle=h;
-    const btn=document.getElementById('btn-reimportar');
-    if(btn){btn.style.display='inline-flex';btn.title='Reimportar: '+h.name;}
   }
 }
 
-// Botão "↻ Reimportar" – clicado pelo usuário
+// Botão "↻ Reimportar" – mantido por compatibilidade
 async function reimportarArquivo(){
   if(!_savedFileHandle){toast('Nenhum arquivo anterior salvo.','error');return;}
   try{
@@ -1327,10 +1311,8 @@ async function reimportarArquivo(){
   }catch(e){toast('Erro ao reimportar: '+e.message,'error');}
 }
 
-// Importa via File System Access API (botão principal) ─────────────────────
 async function abrirArquivoFSA(){
   if(!window.showOpenFilePicker){
-    // fallback: input file clássico
     document.getElementById('file-input').click();
     return;
   }
@@ -1341,8 +1323,6 @@ async function abrirArquivoFSA(){
     });
     _savedFileHandle=handle;
     await _saveHandle(handle);
-    const btn=document.getElementById('btn-reimportar');
-    if(btn){btn.style.display='inline-flex';btn.title='Reimportar: '+handle.name;}
     const file=await handle.getFile();
     handleFile(file);
   }catch(e){
@@ -1420,18 +1400,14 @@ function handleFile(file){
         allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
 
       // UI feedback
-      document.getElementById('import-waiting').style.display='none';
+      const iwEl4 = document.getElementById('import-waiting'); if(iwEl4) iwEl4.style.display='none';
       document.getElementById('file-loaded').style.display='flex';
       document.getElementById('file-name').textContent=file.name;
       document.getElementById('file-stats').textContent=`${rawData.length.toLocaleString('pt-BR')} registros · ${anos.join(', ')}`;
 
       document.getElementById('no-data-msg').style.display='none';
       document.getElementById('dashboard-content').style.display='block';
-      // mostra botão "Atualizar dados" na área de arquivo carregado
-      const brl2=document.getElementById('btn-reimport-loaded');
-      if(brl2) brl2.style.display='inline-flex';
 
-      atualizarBtnEnviarTxt();
       renderTable();
       salvarDadosLocais();
       toast('Importado com sucesso!','success');
@@ -1442,14 +1418,12 @@ function handleFile(file){
 
 function handleDrop(ev){
   ev.preventDefault();
-  document.getElementById('upload-zone').classList.remove('drag');
   handleFile(ev.dataTransfer.files[0]);
 }
 
 function resetImport(){
-  document.getElementById('import-waiting').style.display='block';
+  const iwEl3 = document.getElementById('import-waiting'); if(iwEl3) iwEl3.style.display='block';
   document.getElementById('file-loaded').style.display='none';
-  document.getElementById('file-input').value='';
   rawData=[];
   allProcessos=[];
   document.getElementById('no-data-msg').style.display='block';
@@ -1457,13 +1431,8 @@ function resetImport(){
   document.getElementById('table-container').innerHTML='';
   document.getElementById('cards-container').innerHTML='';
   document.getElementById('charts-container').innerHTML='<div class="empty"><p>Importe um arquivo para ver os gráficos</p></div>';
-  // limpa handle salvo e esconde botões de atalho
   _savedFileHandle=null;
   _clearHandle();
-  const btnR=document.getElementById('btn-reimportar');
-  if(btnR) btnR.style.display='none';
-  const btnRL=document.getElementById('btn-reimport-loaded');
-  if(btnRL) btnRL.style.display='none';
 }
 
 // ===== HELPERS CALENDÁRIO =====
