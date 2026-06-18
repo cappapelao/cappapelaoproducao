@@ -942,32 +942,46 @@ async function importarTxtParaSupabase(file){
   progDiv.style.display = 'block';
   bar.style.width = '0%';
 
-  // 3. Apaga TODOS os dados anteriores (tenta duas condições diferentes)
+  // 3. Apaga TODOS os dados anteriores via RPC (TRUNCATE) — mais confiável que DELETE
   statusEl.textContent = '🗑 Excluindo dados anteriores...';
-  const tentativasDelete = [
-    `${SB_URL}/producao?data=not.is.null`,
-    `${SB_URL}/producao?kg=gte.0`,
-    `${SB_URL}/producao?id=gt.0`
-  ];
   let deletedOk = false;
-  for(const url of tentativasDelete){
-    try{
-      const del = await fetch(url,{
-        method:'DELETE', headers:{...SB_HEADERS,'Prefer':'return=minimal'}
-      });
-      if(del.ok){ deletedOk = true; break; }
-      const errTxt = await del.text();
-      // se for erro de permissão, avisa com instrução clara
-      if(del.status === 403 || errTxt.includes('permission')){
-        statusEl.textContent = '❌ Sem permissão para apagar. Execute no Supabase: GRANT DELETE ON producao TO anon;';
-        toast('Permissão negada. Execute: GRANT DELETE ON producao TO anon; no SQL Editor do Supabase.','error');
-        btn.disabled = false; return;
-      }
-    }catch(e){ console.warn('Delete tentativa falhou:', e); }
-  }
+
+  // Tentativa 1: TRUNCATE via função RPC (requer: create function truncar_producao + grant execute to anon)
+  try{
+    const rpc = await fetch(`${SB_URL.replace('/rest/v1','')}/rest/v1/rpc/truncar_producao`,{
+      method:'POST',
+      headers:{...SB_HEADERS,'Content-Type':'application/json'},
+      body:'{}'
+    });
+    if(rpc.ok){ deletedOk = true; console.log('Truncate via RPC ok'); }
+    else { console.warn('RPC truncate status:', rpc.status, await rpc.text()); }
+  }catch(e){ console.warn('RPC truncate falhou:', e); }
+
+  // Tentativa 2: DELETE via PostgREST com diferentes filtros
   if(!deletedOk){
-    // mesmo sem confirmar que apagou, tenta prosseguir (insert vai deduplicar depois)
-    console.warn('Não foi possível confirmar exclusão — prosseguindo com insert');
+    for(const url of [
+      `${SB_URL}/producao?data=not.is.null`,
+      `${SB_URL}/producao?kg=gte.0`,
+      `${SB_URL}/producao?id=gt.0`
+    ]){
+      try{
+        const del = await fetch(url,{method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}});
+        if(del.ok){ deletedOk = true; break; }
+        const errTxt = await del.text();
+        if(del.status===403 || errTxt.includes('permission') || errTxt.includes('denied')){
+          statusEl.textContent = '❌ Sem permissão de exclusão. Rode no Supabase SQL Editor: GRANT DELETE ON producao TO anon;';
+          toast('Sem permissão de exclusão. Veja o console para o SQL necessário.','error');
+          console.error('SQL necessário: GRANT DELETE ON producao TO anon; e CREATE FUNCTION truncar_producao...');
+          btn.disabled = false; return;
+        }
+      }catch(e){ console.warn('Delete fallback falhou:', e); }
+    }
+  }
+
+  if(!deletedOk){
+    statusEl.textContent = '⚠️ Não foi possível apagar dados antigos. Verifique as permissões no Supabase.';
+    toast('Erro: execute o SQL de permissões no Supabase primeiro.','error');
+    btn.disabled = false; return;
   }
 
   // 4. Envia novos dados em lotes paralelos
