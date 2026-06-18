@@ -759,7 +759,7 @@ async function buscarDoServidor(){
     setMsg(`Baixando ${total.toLocaleString('pt-BR')} registros...`);
 
     // Busca em lotes paralelos
-    const TAM = 2000;
+    const TAM = 1000; // Supabase limita 1000 por requisição — usar 2000 pula registros
     const numLotes = Math.ceil(total / TAM);
     const promises = [];
     for(let i = 0; i < numLotes; i++){
