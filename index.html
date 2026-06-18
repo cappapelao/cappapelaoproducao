@@ -642,6 +642,7 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const SB_HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
 let autoRefreshTimer = null;
 let pingTimer = null;
+let ultimoArquivoNome = '';
 
 // Ping leve a cada 4 minutos para evitar que o Supabase encerre a conexão por inatividade
 function iniciarPingSupabase(){
@@ -663,6 +664,16 @@ async function sbFetch(tabela, params=''){
   return r.json();
 }
 
+async function registrarUltimoEnvio(arquivo, registros){
+  try{
+    await fetch(`${SB_URL}/envio_info`,{
+      method:'POST',
+      headers:{...SB_HEADERS,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({ arquivo: arquivo||'', usuario: _filterUser||'', registros })
+    });
+  }catch(e){ console.warn('Erro ao registrar último envio:', e); }
+}
+
 async function verificarSupabase(){
   const badge = document.getElementById('server-status-badge');
   const info  = document.getElementById('server-info');
@@ -675,8 +686,19 @@ async function verificarSupabase(){
     const total = parseInt(countR.headers.get('content-range')?.split('/')?.[1] || '0');
     const ultimaData = row?.data ? new Date(row.data).toLocaleDateString('pt-BR') : '—';
 
+    // Busca info do último relatório enviado (de qualquer computador)
+    let ultimoEnvioHtml = '';
+    try{
+      const [envio] = await sbFetch('envio_info', 'select=*&order=enviado_em.desc&limit=1');
+      if(envio){
+        const dt = new Date(envio.enviado_em);
+        const dtFmt = `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+        ultimoEnvioHtml = `<br><b>Último envio:</b> ${envio.arquivo||'—'}${envio.usuario?' ('+envio.usuario+')':''} em ${dtFmt} — ${(envio.registros||0).toLocaleString('pt-BR')} registros`;
+      }
+    }catch(e){ /* tabela envio_info pode não existir ainda */ }
+
     if(badge){ badge.textContent='● Conectado'; badge.style.background='rgba(63,185,80,.15)'; badge.style.color='var(--green)'; }
-    if(info) info.innerHTML=`<b>Banco:</b> Supabase (nuvem)<br><b>Registros:</b> ${total.toLocaleString('pt-BR')}<br><b>Dado mais recente:</b> ${ultimaData}<br><b>Atualização:</b> automática a cada 1h pelo sincronizador`;
+    if(info) info.innerHTML=`<b>Banco:</b> Supabase (nuvem)<br><b>Registros:</b> ${total.toLocaleString('pt-BR')}<br><b>Dado mais recente:</b> ${ultimaData}<br><b>Atualização:</b> automática a cada 1h pelo sincronizador${ultimoEnvioHtml}`;
     return true;
   } catch(e){
     if(badge){ badge.textContent='● Sem conexão'; badge.style.background='rgba(248,81,73,.15)'; badge.style.color='var(--red)'; }
@@ -785,6 +807,7 @@ async function buscarDoServidor(){
       const idPag = paginaAtiva.id;
       if(idPag === 'page-qualidade') renderQualidade();
       else if(idPag === 'page-global') renderGlobal();
+      else if(idPag === 'page-graficos') renderCharts();
     }
 
     const duplicatas = todos.length - rawData.length;
@@ -953,6 +976,9 @@ Os dados antigos da tabela serão APAGADOS e substituídos pelos deste arquivo.`
       statusEl.textContent=`⚠️ ${enviados.toLocaleString('pt-BR')} enviados, ${erros.toLocaleString('pt-BR')} com erro.`;
       toast(`Envio parcial: ${erros} erros.`,'error');
     }
+
+    // registra metadados do envio (arquivo, usuário, data/hora) — visível em qualquer computador
+    await registrarUltimoEnvio(ultimoArquivoNome, enviados);
 
     // atualiza card do Supabase
     setTimeout(()=>verificarSupabase(), 1500);
@@ -1320,6 +1346,7 @@ function parseTxtCSV(text){
 
 function handleFile(file){
   if(!file) return;
+  ultimoArquivoNome = file.name;
   const reader=new FileReader();
   reader.onload=e=>{
     try{
