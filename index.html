@@ -914,7 +914,12 @@ async function importarTxtParaSupabase(file){
   const statusEl = document.getElementById('envio-status');
   const bar      = document.getElementById('envio-bar');
 
-  // 1. Lê o arquivo TXT
+  // Passo 1: Lê o arquivo
+  statusEl.textContent = '📂 Lendo arquivo...';
+  progDiv.style.display = 'block';
+  bar.style.width = '2%';
+  btn.disabled = true;
+
   let texto;
   try{
     texto = await new Promise((res,rej) => {
@@ -923,11 +928,22 @@ async function importarTxtParaSupabase(file){
       r.onerror = () => rej(new Error('Falha ao ler arquivo'));
       r.readAsText(file,'latin1');
     });
-  }catch(e){ toast('Erro ao ler arquivo: '+e.message,'error'); return; }
+  }catch(e){
+    statusEl.textContent = '❌ Erro ao ler arquivo: '+e.message;
+    toast('Erro ao ler arquivo.','error');
+    btn.disabled = false; return;
+  }
 
-  // 2. Processa e deduplica
+  // Passo 2: Processa e deduplica
+  statusEl.textContent = '⚙️ Processando registros...';
+  bar.style.width = '5%';
+
   const parsed = parseTxtCSV(texto);
-  if(parsed.length === 0){ toast('Nenhum dado válido encontrado no arquivo.','error'); return; }
+  if(parsed.length === 0){
+    statusEl.textContent = '❌ Nenhum dado válido encontrado no arquivo.';
+    toast('Arquivo sem dados válidos.','error');
+    btn.disabled = false; return;
+  }
 
   const visto = new Set();
   const dados = parsed.filter(r => {
@@ -936,53 +952,57 @@ async function importarTxtParaSupabase(file){
     visto.add(ch); return true;
   });
 
-  if(!confirm(`Importar "${file.name}" para o Supabase?\n\n${dados.length.toLocaleString('pt-BR')} registros únicos.\n\nOs dados anteriores serão SUBSTITUÍDOS.`)) return;
+  // Resumo dos meses encontrados
+  const mesesEncontrados = [...new Set(dados.map(r=>r.date.substring(0,7)))].sort();
+  statusEl.textContent = `✅ ${dados.length.toLocaleString('pt-BR')} registros únicos — ${mesesEncontrados.join(', ')} — iniciando envio...`;
+  bar.style.width = '8%';
+  await new Promise(r=>setTimeout(r,800));
 
-  btn.disabled = true;
-  progDiv.style.display = 'block';
-  bar.style.width = '0%';
-
-  // 3. Apaga TODOS os dados anteriores via RPC (TRUNCATE) — mais confiável que DELETE
-  statusEl.textContent = '🗑 Excluindo dados anteriores...';
+  // Passo 3: Apaga TODOS os dados anteriores
+  statusEl.textContent = '🗑 Excluindo dados anteriores do Supabase...';
+  bar.style.width = '10%';
   let deletedOk = false;
 
-  // Tentativa 1: TRUNCATE via função RPC (requer: create function truncar_producao + grant execute to anon)
+  // Tenta RPC truncate primeiro (mais confiável)
   try{
-    const rpc = await fetch(`${SB_URL.replace('/rest/v1','')}/rest/v1/rpc/truncar_producao`,{
+    const rpc = await fetch(`${SB_URL}/rpc/truncar_producao`,{
       method:'POST',
       headers:{...SB_HEADERS,'Content-Type':'application/json'},
       body:'{}'
     });
-    if(rpc.ok){ deletedOk = true; console.log('Truncate via RPC ok'); }
-    else { console.warn('RPC truncate status:', rpc.status, await rpc.text()); }
-  }catch(e){ console.warn('RPC truncate falhou:', e); }
+    if(rpc.ok){ deletedOk = true; }
+    else {
+      const rpcErr = await rpc.text();
+      console.warn('RPC truncate falhou:', rpc.status, rpcErr);
+      statusEl.textContent = `⚠️ RPC falhou (${rpc.status}): tentando DELETE direto...`;
+    }
+  }catch(e){ console.warn('RPC exception:', e.message); }
 
-  // Tentativa 2: DELETE via PostgREST com diferentes filtros
+  // Fallback: DELETE via PostgREST
   if(!deletedOk){
-    for(const url of [
-      `${SB_URL}/producao?data=not.is.null`,
-      `${SB_URL}/producao?kg=gte.0`,
-      `${SB_URL}/producao?id=gt.0`
-    ]){
+    for(const filtro of ['data=not.is.null','kg=gte.0','id=gt.0']){
       try{
-        const del = await fetch(url,{method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}});
+        const del = await fetch(`${SB_URL}/producao?${filtro}`,{
+          method:'DELETE', headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+        });
         if(del.ok){ deletedOk = true; break; }
         const errTxt = await del.text();
-        if(del.status===403 || errTxt.includes('permission') || errTxt.includes('denied')){
-          statusEl.textContent = '❌ Sem permissão de exclusão. Rode no Supabase SQL Editor: GRANT DELETE ON producao TO anon;';
-          toast('Sem permissão de exclusão. Veja o console para o SQL necessário.','error');
-          console.error('SQL necessário: GRANT DELETE ON producao TO anon; e CREATE FUNCTION truncar_producao...');
-          btn.disabled = false; return;
-        }
-      }catch(e){ console.warn('Delete fallback falhou:', e); }
+        console.warn(`DELETE ?${filtro} → ${del.status}:`, errTxt);
+        statusEl.textContent = `❌ Erro ${del.status}: ${errTxt.substring(0,120)}`;
+      }catch(e){ console.warn('DELETE exception:', e.message); }
     }
   }
 
   if(!deletedOk){
-    statusEl.textContent = '⚠️ Não foi possível apagar dados antigos. Verifique as permissões no Supabase.';
-    toast('Erro: execute o SQL de permissões no Supabase primeiro.','error');
-    btn.disabled = false; return;
+    statusEl.textContent = '❌ FALHA: Sem permissão para apagar dados. Execute o SQL no Supabase e tente novamente.';
+    toast('Sem permissão de exclusão — execute o SQL no Supabase.','error');
+    btn.disabled = false;
+    bar.style.width = '0%';
+    return;
   }
+
+  statusEl.textContent = '✅ Dados anteriores removidos. Enviando novos registros...';
+  bar.style.width = '12%';
 
   // 4. Envia novos dados em lotes paralelos
   const LOTE = 1000, PARALELO = 5;
