@@ -208,7 +208,7 @@ td.sem-prod{color:var(--text3);}
       <!-- STATUS DO SERVIDOR -->
       <div class="import-box" style="max-width:520px;width:100%">
         <h2>Fonte de dados</h2>
-        <p style="color:var(--text2);font-size:14px;margin-bottom:20px">Clique em <strong>↻ Atualizar agora</strong> para carregar dados do Supabase, ou importe um arquivo Excel manualmente.</p>
+        <p style="color:var(--text2);font-size:14px;margin-bottom:20px">Os dados são carregados automaticamente do Supabase ao entrar. Use o botão abaixo para importar um novo relatório.</p>
 
         <!-- Card servidor -->
         <div id="server-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">
@@ -217,53 +217,45 @@ td.sem-prod{color:var(--text3);}
             <span id="server-status-badge" style="font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(110,118,129,.2);color:var(--text3)">Não verificado</span>
           </div>
           <div id="server-info" style="font-size:12px;color:var(--text3);line-height:1.8">
-            Clique em <strong>↻ Atualizar agora</strong> para buscar os dados do Supabase.
+            Carregando informações do servidor...
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
             <button onclick="buscarDoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--accent);background:transparent;color:var(--accent)">↻ Atualizar agora</button>
-            <button onclick="forcarAtualizacaoServidor()" style="padding:7px 16px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2)">⟳ Reler Excel no servidor</button>
-            <button id="btn-enviar-txt" onclick="enviarTxtParaSupabase()" title="Apaga todos os dados antigos e envia somente os deste arquivo" style="display:none;padding:7px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--green);background:transparent;color:var(--green)">⬆ Enviar TXT para Supabase (substitui dados antigos)</button>
-          </div>
-          <div id="envio-progress" style="display:none;margin-top:12px">
-            <div style="font-size:12px;color:var(--text2);margin-bottom:6px" id="envio-status">Enviando...</div>
-            <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
-              <div id="envio-bar" style="height:100%;background:var(--green);width:0%;transition:width .3s"></div>
-            </div>
           </div>
         </div>
 
-        <!-- Divisor -->
-        <div style="display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--text3);font-size:12px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          ou importe manualmente
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-
-        <!-- Upload manual -->
-        <div id="import-waiting">
-          <!-- Botão atalho: reimportar o mesmo arquivo (aparece após 1ª importação) -->
-          <button id="btn-reimportar" onclick="reimportarArquivo()"
-            style="display:none;align-items:center;gap:8px;margin-bottom:16px;padding:10px 20px;
-                   border-radius:10px;border:none;background:var(--accent);color:#fff;
-                   font-size:14px;font-weight:600;cursor:pointer;">
-            ↻ Reimportar último arquivo
-          </button>
-          <div class="upload-zone" id="upload-zone"
-            onclick="abrirArquivoFSA()"
-            ondragover="event.preventDefault();this.classList.add('drag')"
-            ondragleave="this.classList.remove('drag')"
-            ondrop="handleDrop(event)">
-            <svg width="36" height="36" viewBox="0 0 40 40" fill="none" style="margin:0 auto 12px;display:block;color:var(--text3)">
-              <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <rect x="4" y="4" width="32" height="32" rx="8" stroke="currentColor" stroke-width="1.5"/>
+        <!-- Botão único de importação direta -->
+        <div style="margin-bottom:16px">
+          <button id="btn-importar-supabase" onclick="abrirImportacaoSupabase()"
+            style="width:100%;padding:14px 20px;border-radius:10px;border:none;
+                   background:var(--green);color:#fff;font-size:15px;font-weight:600;
+                   cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            <p style="font-size:14px">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></p>
-            <p style="font-size:12px;margin-top:6px;color:var(--text3)">Suporta .txt (Relatório de Custos)</p>
+            Importar TXT para Supabase
+          </button>
+          <input type="file" id="file-input-supabase" accept=".txt" style="display:none" onchange="importarTxtParaSupabase(this.files[0])"/>
+        </div>
+
+        <!-- Barra de progresso (oculta até o envio) -->
+        <div id="envio-progress" style="display:none;margin-bottom:16px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px" id="envio-status">Enviando...</div>
+          <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
+            <div id="envio-bar" style="height:100%;background:var(--green);width:0%;transition:width .3s"></div>
           </div>
+        </div>
+
+        <!-- Último documento importado -->
+        <div id="ultimo-envio-card" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Último documento importado</div>
+          <div id="ultimo-envio-info" style="font-size:13px;color:var(--text);line-height:1.9"></div>
         </div>
       </div>
 
-      <!-- Estado: dados carregados -->
+      <!-- Estado: dados carregados (rodapé) -->
       <div class="file-loaded" id="file-loaded">
         <div class="file-loaded-row">
           <span class="file-dot"></span>
@@ -273,12 +265,10 @@ td.sem-prod{color:var(--text3);}
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-          <button class="btn-reimport" onclick="reimportarArquivo()" id="btn-reimport-loaded"
-            style="display:none;">↻ Atualizar dados</button>
-          <button class="btn-reimport" onclick="resetImport()">↩ Trocar fonte de dados</button>
+          <button class="btn-reimport" onclick="buscarDoServidor()">↻ Atualizar dados</button>
         </div>
       </div>
-      <input type="file" id="file-input" accept=".txt" onchange="handleFile(this.files[0])"/>
+      <input type="file" id="file-input" accept=".txt" onchange="handleFile(this.files[0])" style="display:none"/>
     </div>
   </div>
 
@@ -698,7 +688,10 @@ async function verificarSupabase(){
     }catch(e){ /* tabela envio_info pode não existir ainda */ }
 
     if(badge){ badge.textContent='● Conectado'; badge.style.background='rgba(63,185,80,.15)'; badge.style.color='var(--green)'; }
-    if(info) info.innerHTML=`<b>Banco:</b> Supabase (nuvem)<br><b>Registros:</b> ${total.toLocaleString('pt-BR')}<br><b>Dado mais recente:</b> ${ultimaData}<br><b>Atualização:</b> automática a cada 1h pelo sincronizador${ultimoEnvioHtml}`;
+    if(info) info.innerHTML=`<b>Banco:</b> Supabase (nuvem)<br><b>Registros:</b> ${total.toLocaleString('pt-BR')}<br><b>Dado mais recente:</b> ${ultimaData}<br><b>Atualização:</b> automática a cada 1h pelo sincronizador`;
+
+    // Atualiza card "Último documento importado"
+    await carregarUltimoEnvio();
     return true;
   } catch(e){
     if(badge){ badge.textContent='● Sem conexão'; badge.style.background='rgba(248,81,73,.15)'; badge.style.color='var(--red)'; }
@@ -908,122 +901,137 @@ async function deletarMetaSupabase(ano, mes, proc){
   } catch(e){ console.warn('Erro ao deletar meta:', e); }
 }
 
+function abrirImportacaoSupabase(){
+  document.getElementById('file-input-supabase').value = '';
+  document.getElementById('file-input-supabase').click();
+}
+
+async function importarTxtParaSupabase(file){
+  if(!file) return;
+
+  const btn      = document.getElementById('btn-importar-supabase');
+  const progDiv  = document.getElementById('envio-progress');
+  const statusEl = document.getElementById('envio-status');
+  const bar      = document.getElementById('envio-bar');
+
+  // Lê e processa o arquivo
+  const texto = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = () => rej(new Error('Falha ao ler arquivo'));
+    r.readAsText(file, 'latin1');
+  });
+
+  const parsed = parseTxtCSV(texto);
+  if(parsed.length === 0){ toast('Nenhum dado válido encontrado no arquivo.', 'error'); return; }
+
+  // Deduplica
+  const vistoTxt = new Set();
+  const dados = parsed.filter(r => {
+    const ch = `${r.date}|${r.proc}|${r.maq}|${r.kg}`;
+    if(vistoTxt.has(ch)) return false;
+    vistoTxt.add(ch); return true;
+  });
+
+  if(!confirm(`Importar "${file.name}" para o Supabase?\n\n${dados.toLocaleString ? dados.length.toLocaleString('pt-BR') : dados.length} registros únicos.\n\nOs dados antigos serão substituídos.`)) return;
+
+  btn.disabled = true;
+  progDiv.style.display = 'block';
+  bar.style.width = '0%';
+  statusEl.textContent = 'Apagando dados antigos...';
+
+  // Apaga dados antigos
+  try{
+    const del = await fetch(`${SB_URL}/producao?id=gt.0`,{
+      method:'DELETE', headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+    });
+    if(!del.ok) throw new Error(await del.text());
+  }catch(e){
+    statusEl.textContent = '❌ Erro ao apagar dados antigos: ' + e.message;
+    toast('Erro ao apagar: ' + e.message, 'error');
+    btn.disabled = false; return;
+  }
+
+  // Envia em lotes paralelos
+  const LOTE = 1000, PARALELO = 5;
+  const total = dados.length;
+  let enviados = 0, erros = 0;
+  statusEl.textContent = 'Enviando dados...';
+
+  const lotes = [];
+  for(let i = 0; i < total; i += LOTE){
+    lotes.push(dados.slice(i, i + LOTE).map(r =>({
+      data: r.date, kg: r.kg, processo: r.proc||'', maquina: r.maq||'', produto: r.produto||''
+    })));
+  }
+
+  for(let g = 0; g < lotes.length; g += PARALELO){
+    const grupo = lotes.slice(g, g + PARALELO);
+    const res = await Promise.all(grupo.map(lote =>
+      fetch(`${SB_URL}/producao`,{
+        method:'POST',
+        headers:{...SB_HEADERS,'Content-Type':'application/json','Prefer':'return=minimal'},
+        body: JSON.stringify(lote)
+      }).then(async r => ({ ok:r.ok, n:lote.length, err: r.ok ? '' : await r.text() }))
+        .catch(e => ({ ok:false, n:lote.length, err:e.message }))
+    ));
+    res.forEach(r => { if(r.ok) enviados += r.n; else { erros += r.n; console.warn('Lote err:', r.err); }});
+    const pct = Math.round(Math.min(g + PARALELO, lotes.length) / lotes.length * 100);
+    bar.style.width = pct + '%';
+    statusEl.textContent = `Enviando... ${enviados.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} (${pct}%)`;
+  }
+
+  bar.style.width = '100%';
+  if(erros === 0){
+    statusEl.textContent = `✅ ${enviados.toLocaleString('pt-BR')} registros importados com sucesso!`;
+    toast(`${enviados.toLocaleString('pt-BR')} registros importados!`, 'success');
+  } else {
+    statusEl.textContent = `⚠️ ${enviados.toLocaleString('pt-BR')} importados, ${erros} com erro.`;
+    toast('Importação parcial: ' + erros + ' erros.', 'error');
+  }
+
+  // Registra metadados e atualiza card
+  await registrarUltimoEnvio(file.name, enviados);
+  await carregarUltimoEnvio();
+
+  btn.disabled = false;
+  setTimeout(async () => {
+    statusEl.textContent = '🔄 Recarregando dados do Supabase...';
+    await buscarDoServidor();
+    setTimeout(() => { progDiv.style.display = 'none'; bar.style.width = '0%'; }, 3000);
+  }, 1200);
+}
+
+async function carregarUltimoEnvio(){
+  try{
+    const [envio] = await sbFetch('envio_info','select=*&order=enviado_em.desc&limit=1');
+    const card = document.getElementById('ultimo-envio-card');
+    const info = document.getElementById('ultimo-envio-info');
+    if(!card || !info) return;
+    if(envio){
+      const dt = new Date(envio.enviado_em);
+      const dtFmt = `${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+      card.style.display = 'block';
+      info.innerHTML =
+        `<b>📄 Arquivo:</b> ${envio.arquivo || '—'}<br>` +
+        `<b>👤 Usuário:</b> ${envio.usuario || '—'}<br>` +
+        `<b>🗓 Data/hora:</b> ${dtFmt}<br>` +
+        `<b>📊 Registros:</b> ${(envio.registros||0).toLocaleString('pt-BR')}`;
+    } else {
+      card.style.display = 'none';
+    }
+  }catch(e){ /* envio_info pode não existir ainda */ }
+}
+
+function atualizarBtnEnviarTxt(){ /* mantido por compatibilidade — botão removido da UI */ }
+
+async function enviarTxtParaSupabase(){ /* substituído por importarTxtParaSupabase */ }
+
 function forcarAtualizacaoServidor(){
   toast('Atualizando do Supabase...','success');
   buscarDoServidor();
 }
 
-// ── Mostrar/ocultar botão "Enviar TXT para Supabase" conforme há dados TXT
-function atualizarBtnEnviarTxt(){
-  const btn=document.getElementById('btn-enviar-txt');
-  if(!btn) return;
-  // mostra só se há dados locais (TXT) E o usuário tem perfil full
-  btn.style.display=(rawData.length>0 && currentRole==='full') ? 'inline-block' : 'none';
-}
-
-async function enviarTxtParaSupabase(){
-  if(rawData.length===0){toast('Importe um arquivo TXT primeiro.','error');return;}
-  if(!confirm(`Enviar ${rawData.length.toLocaleString('pt-BR')} registros para o Supabase?
-
-Os dados antigos da tabela serão APAGADOS e substituídos pelos deste arquivo.`)) return;
-
-  const btn=document.getElementById('btn-enviar-txt');
-  const progDiv=document.getElementById('envio-progress');
-  const statusEl=document.getElementById('envio-status');
-  const bar=document.getElementById('envio-bar');
-
-  btn.disabled=true;
-  btn.textContent='Apagando dados antigos...';
-  progDiv.style.display='block';
-  statusEl.textContent='Apagando registros antigos do Supabase...';
-  bar.style.width='0%';
-
-  // ── Apaga TODOS os registros antigos antes de enviar os novos
-  try{
-    const delResp=await fetch(`${SB_URL}/producao?id=gt.0`,{
-      method:'DELETE',
-      headers:{...SB_HEADERS,'Prefer':'return=minimal'}
-    });
-    if(!delResp.ok){
-      const txt=await delResp.text();
-      throw new Error(`Falha ao apagar dados antigos: ${txt}`);
-    }
-  }catch(e){
-    statusEl.textContent='❌ Erro ao apagar dados antigos: '+e.message;
-    toast('Erro ao apagar dados antigos: '+e.message,'error');
-    btn.disabled=false;
-    btn.textContent='⬆ Enviar TXT para Supabase (substitui dados antigos)';
-    return;
-  }
-
-  btn.textContent='Enviando...';
-
-  const LOTE = 1000;   // registros por request (Supabase suporta bem)
-  const PARALELO = 5;  // requests simultâneos
-  const total = rawData.length;
-  let enviados = 0, erros = 0;
-
-  try{
-    // Monta todos os lotes de uma vez
-    const lotes = [];
-    for(let i = 0; i < total; i += LOTE){
-      lotes.push(rawData.slice(i, i + LOTE).map(r=>({
-        data:     r.date,
-        kg:       r.kg,
-        processo: r.proc    || '',
-        maquina:  r.maq     || '',
-        produto:  r.produto || ''
-      })));
-    }
-
-    // Envia em grupos paralelos
-    for(let g = 0; g < lotes.length; g += PARALELO){
-      const grupo = lotes.slice(g, g + PARALELO);
-      const resultados = await Promise.all(grupo.map(lote =>
-        fetch(`${SB_URL}/producao`, {
-          method: 'POST',
-          headers: { ...SB_HEADERS, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-          body: JSON.stringify(lote)
-        }).then(async resp => {
-          if(!resp.ok){ console.warn('Lote erro:', await resp.text()); return { ok:false, n:lote.length }; }
-          return { ok:true, n:lote.length };
-        }).catch(e => { console.warn('Lote falhou:', e); return { ok:false, n:lote.length }; })
-      ));
-
-      resultados.forEach(r => { if(r.ok) enviados += r.n; else erros += r.n; });
-
-      const pct = Math.round(Math.min(g + PARALELO, lotes.length) / lotes.length * 100);
-      bar.style.width = pct + '%';
-      statusEl.textContent = `Enviando... ${enviados.toLocaleString('pt-BR')} / ${total.toLocaleString('pt-BR')} registros (${pct}%)`;
-    }
-
-    bar.style.width='100%';
-    if(erros===0){
-      statusEl.textContent=`✅ ${enviados.toLocaleString('pt-BR')} registros enviados com sucesso!`;
-      toast(`${enviados.toLocaleString('pt-BR')} registros enviados para o Supabase!`,'success');
-    } else {
-      statusEl.textContent=`⚠️ ${enviados.toLocaleString('pt-BR')} enviados, ${erros.toLocaleString('pt-BR')} com erro.`;
-      toast(`Envio parcial: ${erros} erros.`,'error');
-    }
-
-    // registra metadados do envio (arquivo, usuário, data/hora) — visível em qualquer computador
-    await registrarUltimoEnvio(ultimoArquivoNome, enviados);
-
-    // recarrega do Supabase para garantir dados corretos no localStorage e na tela
-    setTimeout(async () => {
-      statusEl.textContent = '🔄 Recarregando dados do Supabase...';
-      await buscarDoServidor();
-    }, 1500);
-
-  }catch(e){
-    statusEl.textContent='❌ Erro: '+e.message;
-    toast('Erro no envio: '+e.message,'error');
-  } finally {
-    btn.disabled=false;
-    btn.textContent='⬆ Enviar TXT para Supabase (substitui dados antigos)';
-    setTimeout(()=>{ progDiv.style.display='none'; bar.style.width='0%'; },5000);
-  }
-}
 
 // ===== QUALIDADE =====
 function renderQualidade(){
