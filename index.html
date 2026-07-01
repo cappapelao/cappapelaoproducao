@@ -192,6 +192,7 @@ td.sem-prod{color:var(--text3);}
       <button class="nav-tab" onclick="goPage('qualidade')">Qualidade</button>
       <button class="nav-tab" onclick="goPage('global')">Visão Global</button>
       <button class="nav-tab" onclick="goPage('graficos')">Gráficos</button>
+      <button class="nav-tab" onclick="goPage('produto')">Produto</button>
       <button class="nav-tab" onclick="goPage('metas')">Metas</button>
       <button class="nav-tab" onclick="goPage('dados')">Dados</button>
     </div>
@@ -311,6 +312,26 @@ td.sem-prod{color:var(--text3);}
           <label>Processo</label>
           <select id="sel-proc" onchange="renderTable()"></select>
         </div>
+        <div class="filter-group">
+          <label>Hora início</label>
+          <input id="sel-hora-ini" type="time" onchange="renderTable()"
+            style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/>
+        </div>
+        <div class="filter-group">
+          <label>Hora fim</label>
+          <input id="sel-hora-fim" type="time" onchange="renderTable()"
+            style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/>
+        </div>
+        <div class="filter-group">
+          <label>Ver por</label>
+          <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button type="button" id="sel-metric-btn-kg" onclick="setDashMetric('kg')"
+              style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:var(--accent2);color:#fff">Kg</button>
+            <button type="button" id="sel-metric-btn-folhas" onclick="setDashMetric('folhas')"
+              style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;border-left:1px solid var(--border);background:var(--bg3);color:var(--text2)">Folhas</button>
+          </div>
+          <select id="sel-metric" style="display:none"><option value="kg" selected>kg</option><option value="folhas">folhas</option></select>
+        </div>
       </div>
       <div id="cards-container"></div>
       <div id="table-container"></div>
@@ -384,6 +405,16 @@ td.sem-prod{color:var(--text3);}
       <div class="empty">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
         <p>Importe um arquivo Excel para ver os gráficos</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANÁLISE POR PRODUTO -->
+  <div class="page" id="page-produto">
+    <div id="produto-container">
+      <div class="empty">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        <p>Importe um arquivo Excel para ver a análise por produto</p>
       </div>
     </div>
   </div>
@@ -831,7 +862,7 @@ async function buscarDoServidor(){
       for(let j = i; j < Math.min(i + GRUPO, numLotes); j++){
         grupo.push(
           sbFetch('producao_admin',
-            `select=data,kg,processo,maquina,produto&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
+            `select=data,kg,processo,maquina,produto,folhas,horas,hora_inicio,hora_fim&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
         );
       }
       const resultados = await Promise.all(grupo);
@@ -844,9 +875,15 @@ async function buscarDoServidor(){
     const normalizado = todos.map(r => {
       const dataStr = r.data ? String(r.data).substring(0, 10) : '';
       const kgNum = parseFloat(String(r.kg || '0').replace(',', '.'));
+      const folhasNum = parseFloat(String(r.folhas || '0').replace(',', '.'));
+      const horasNum = parseFloat(String(r.horas || '0').replace(',', '.'));
       return {
         date:    dataStr,
         kg:      isNaN(kgNum) ? 0 : kgNum,
+        folhas:  isNaN(folhasNum) ? 0 : folhasNum,
+        horas:   isNaN(horasNum) ? 0 : horasNum,
+        horaIni: r.hora_inicio || '',
+        horaFim: r.hora_fim || '',
         proc:    r.processo || '',
         maq:     r.maquina  || '',
         produto: r.produto   || ''
@@ -881,6 +918,7 @@ async function buscarDoServidor(){
       if(idPag === 'page-qualidade') renderQualidade();
       else if(idPag === 'page-global') renderGlobal();
       else if(idPag === 'page-graficos') renderCharts();
+      else if(idPag === 'page-produto') renderProdutoAnalise();
     }
 
     const duplicatas = 0; // dedup removida
@@ -1062,7 +1100,9 @@ async function importarTxtParaSupabase(file){
   const lotes = [];
   for(let i = 0; i < total; i += LOTE){
     lotes.push(dados.slice(i,i+LOTE).map(r =>({
-      data:r.date, kg:r.kg, processo:r.proc||'', maquina:r.maq||'', produto:r.produto||''
+      data:r.date, kg:r.kg, processo:r.proc||'', maquina:r.maq||'', produto:r.produto||'',
+      folhas:r.folhas||0, horas:r.horas||0,
+      hora_inicio:r.horaIni||null, hora_fim:r.horaFim||null
     })));
   }
 
@@ -1483,6 +1523,11 @@ function popularFiltros(){
   if(selProc){ selProc.innerHTML=procOpts; selProc.value=loadFilter('dash','proc')||''; }
   const selMes=document.getElementById('sel-mes');
   if(selMes) selMes.value=loadFilter('dash','mes')||'';
+  const selHoraIni=document.getElementById('sel-hora-ini');
+  if(selHoraIni) selHoraIni.value=loadFilter('dash','horaIni')||'';
+  const selHoraFim=document.getElementById('sel-hora-fim');
+  if(selHoraFim) selHoraFim.value=loadFilter('dash','horaFim')||'';
+  if(document.getElementById('sel-metric')) setDashMetric(loadFilter('dash','metric')||'kg', true);
   const mProc=document.getElementById('m-proc');
   if(mProc) mProc.innerHTML='<option value="">— Todos os processos (geral) —</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
 
@@ -1502,7 +1547,7 @@ function popularFiltros(){
 }
 
 // ===== NAV =====
-const PAGES=['importar','dashboard','qualidade','global','graficos','metas','dados'];
+const PAGES=['importar','dashboard','qualidade','global','graficos','produto','metas','dados'];
 function goPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -1513,6 +1558,7 @@ function goPage(p){
   if(p==='graficos') renderCharts();
   if(p==='qualidade') renderQualidade();
   if(p==='global') renderGlobal();
+  if(p==='produto') renderProdutoAnalise();
   if(p==='metas') renderMetaList();
   if(p==='dados') initDados();
 }
@@ -1644,12 +1690,22 @@ function parseTxtCSV(text){
     if(!dt) continue;
     const kg=parseFloat(fields[14].trim().replace(',','.'));
     if(isNaN(kg)||kg<=0) continue;
+    // folhas é contagem inteira: ponto é separador de milhar, vírgula é decimal
+    const folhasRaw=(fields[4]||'').trim();
+    const folhasNum=folhasRaw ? parseFloat(folhasRaw.replace(/\./g,'').replace(',','.')) : 0;
+    // horas produzidas (coluna 4): decimal com vírgula
+    const horasRaw=(fields[3]||'').trim();
+    const horasNum=horasRaw ? parseFloat(horasRaw.replace(',','.')) : 0;
     result.push({
       date:dt,
       kg,
-      proc:fields[8].trim(),
+      folhas: isNaN(folhasNum) ? 0 : folhasNum,
+      horas: isNaN(horasNum) ? 0 : horasNum,
+      horaIni: (fields[1]||'').trim(),
+      horaFim: (fields[2]||'').trim(),
+      proc:fields[7].trim(),
       maq:fields[13].trim(),
-      produto:fields[11].trim()
+      produto:fields[10].trim()
     });
   }
   return result;
@@ -1740,14 +1796,41 @@ function todosOsDias(ano,mes){
 }
 
 // ===== FILTERS =====
+function setDashMetric(v, skipRender){
+  const sel=document.getElementById('sel-metric'); if(sel) sel.value=v;
+  const btnKg=document.getElementById('sel-metric-btn-kg'), btnFolhas=document.getElementById('sel-metric-btn-folhas');
+  if(btnKg && btnFolhas){
+    btnKg.style.background = v==='folhas' ? 'var(--bg3)' : 'var(--accent2)';
+    btnKg.style.color = v==='folhas' ? 'var(--text2)' : '#fff';
+    btnFolhas.style.background = v==='folhas' ? 'var(--accent2)' : 'var(--bg3)';
+    btnFolhas.style.color = v==='folhas' ? '#fff' : 'var(--text2)';
+  }
+  saveFilter('dash','metric',v);
+  if(!skipRender) renderTable();
+}
+
+function getDashMetric(){
+  const sel=document.getElementById('sel-metric');
+  return (sel && sel.value==='folhas') ? 'folhas' : 'kg';
+}
+
 function getFiltered(){
   const ano=document.getElementById('sel-ano').value;
   const mes=document.getElementById('sel-mes').value;
   const proc=document.getElementById('sel-proc').value;
+  const horaIniEl=document.getElementById('sel-hora-ini'), horaFimEl=document.getElementById('sel-hora-fim');
+  const horaIni=horaIniEl?horaIniEl.value:'', horaFim=horaFimEl?horaFimEl.value:'';
   return rawData.filter(r=>{
     if(ano&&!r.date.startsWith(ano)) return false;
     if(mes&&parseInt(r.date.substring(5,7))!==parseInt(mes)) return false;
     if(proc&&r.proc!==proc) return false;
+    if(horaIni||horaFim){
+      if(r.horaIni||r.horaFim){
+        const rIni=r.horaIni||'00:00', rFim=r.horaFim||'23:59';
+        const fIni=horaIni||'00:00', fFim=horaFim||'23:59';
+        if(!(rIni<=fFim && rFim>=fIni)) return false;
+      }
+    }
     return true;
   });
 }
@@ -1769,25 +1852,34 @@ function vGradient(ctx,chartArea,colorTop,colorBottom){
 // plugin genérico: desenha o valor de cada barra/ponto, sem abreviar
 const valueLabelsPlugin={id:'valueLabels',afterDatasetsDraw(chart){
   const {ctx}=chart;
+  // IMPORTANTE: não ler o formatter de chart.options.plugins.* — o Chart.js trata
+  // qualquer função ali dentro como "scriptable option" e a CHAMA sozinho (com um
+  // argumento interno dele), quebrando tudo. Por isso guardamos o formatter direto
+  // na instância do gráfico (propriedade simples, fora do objeto "options").
+  const fmt=chart.$valueLabelFormatter || fmtKg;
   chart.data.datasets.forEach((ds,di)=>{
     const meta=chart.getDatasetMeta(di);
     if(meta.hidden) return;
     meta.data.forEach((el,i)=>{
-      const val=ds.data[i];
-      if(val===null||val===undefined||val===0) return;
-      ctx.save();
-      ctx.font='9px Segoe UI';
-      ctx.textAlign='center';
-      if(meta.type==='line'){
-        ctx.fillStyle=ds.borderColor||'#8b949e';
-        ctx.textBaseline='bottom';
-        ctx.fillText(fmtKg(val),el.x,el.y-8);
-      }else{
-        ctx.fillStyle='#8b949e';
-        ctx.textBaseline='bottom';
-        ctx.fillText(fmtKg(val),el.x,el.y-2);
+      try{
+        const val=ds.data[i];
+        if(val===null||val===undefined||val===0) return;
+        ctx.save();
+        ctx.font='9px Segoe UI';
+        ctx.textAlign='center';
+        if(meta.type==='line'){
+          ctx.fillStyle=ds.borderColor||'#8b949e';
+          ctx.textBaseline='bottom';
+          ctx.fillText(fmt(val),el.x,el.y-8);
+        }else{
+          ctx.fillStyle='#8b949e';
+          ctx.textBaseline='bottom';
+          ctx.fillText(fmt(val),el.x,el.y-2);
+        }
+        ctx.restore();
+      }catch(e){
+        ctx.restore();
       }
-      ctx.restore();
     });
   });
 }};
@@ -1798,11 +1890,18 @@ function renderTable(){
   saveFilter('dash','ano',document.getElementById('sel-ano').value);
   saveFilter('dash','mes',document.getElementById('sel-mes').value);
   saveFilter('dash','proc',document.getElementById('sel-proc').value);
+  const horaIniEl=document.getElementById('sel-hora-ini'), horaFimEl=document.getElementById('sel-hora-fim');
+  saveFilter('dash','horaIni', horaIniEl?horaIniEl.value:'');
+  saveFilter('dash','horaFim', horaFimEl?horaFimEl.value:'');
   const data=getFiltered();
+
+  const metricKey = getDashMetric();
+  const metricLabel = metricKey==='folhas' ? 'Folhas' : 'Kg';
+  const fmtMetric = metricKey==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
 
   // group by day from raw data
   const byDay={};
-  data.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+r.kg;});
+  data.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+(r[metricKey]||0);});
 
   const ano=document.getElementById('sel-ano').value;
   const mes=document.getElementById('sel-mes').value;
@@ -1835,10 +1934,11 @@ function renderTable(){
 
   // meta — busca por processo específico primeiro, depois geral
   // referência ao cadastro de meta (dias úteis definidos no cadastro)
+  // metas são cadastradas em KG, então só se aplicam quando a métrica exibida é Kg
   let metaDia=0;
   let metaDiasCadastro=null;
   let metaTotalCadastro=0;
-  if(ano&&mes){
+  if(ano&&mes&&metricKey==='kg'){
     const baseKey=`${ano}-${String(mes).padStart(2,'0')}`;
     const procKey=proc?`${baseKey}|${proc}`:null;
     const m=(procKey&&metas[procKey])||metas[baseKey];
@@ -1868,19 +1968,19 @@ function renderTable(){
 
   document.getElementById('cards-container').innerHTML=`
     <div class="cards-grid" style="margin-bottom:16px">
-      <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtKg(total)}</span><span class="card-sub">KG no período</span></div>
-      <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtKg(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
-      ${metaDia>0?`<div class="card yellow"><span class="card-label">Meta Diária</span><span class="card-value">${fmtKg(metaDia)}</span><span class="card-sub">KG/dia</span></div>`:''}
-      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtKg(metaTotalAcum)}</span><span class="card-sub">${diasMeta} dias × ${fmtKg(metaDia)} KG</span></div>`:''}
-      ${pctGeral!==null?`<div class="card ${pctGeral>=100?'green':pctGeral>=80?'yellow':'red'}"><span class="card-label">% Acumulado/Meta</span><span class="card-value">${pctGeral}%</span><span class="card-sub">${fmtKg(total)} produzido</span></div>`:''}
+      <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtMetric(total)}</span><span class="card-sub">${metricLabel.toUpperCase()} no período</span></div>
+      <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtMetric(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
+      ${metaDia>0?`<div class="card yellow"><span class="card-label">Meta Diária</span><span class="card-value">${fmtMetric(metaDia)}</span><span class="card-sub">KG/dia</span></div>`:''}
+      ${metaTotalAcum>0?`<div class="card"><span class="card-label">Meta Acumulada</span><span class="card-value">${fmtMetric(metaTotalAcum)}</span><span class="card-sub">${diasMeta} dias × ${fmtMetric(metaDia)} KG</span></div>`:''}
+      ${pctGeral!==null?`<div class="card ${pctGeral>=100?'green':pctGeral>=80?'yellow':'red'}"><span class="card-label">% Acumulado/Meta</span><span class="card-value">${pctGeral}%</span><span class="card-sub">${fmtMetric(total)} produzido</span></div>`:''}
     </div>`;
 
   const showMeta=metaDia>0;
   const thead=`<thead><tr>
     <th>Data</th><th>Dia</th>
-    <th>Produzido (KG)</th>
-    <th>Acumulado (KG)</th>
-    ${showMeta?'<th>Meta Diária (KG)</th><th>Meta Acum. (KG)</th><th>% Acum./Meta</th>':''}
+    <th>Produzido (${metricLabel})</th>
+    <th>Acumulado (${metricLabel})</th>
+    ${showMeta?`<th>Meta Diária (${metricLabel})</th><th>Meta Acum. (${metricLabel})</th><th>% Acum./Meta</th>`:''}
   </tr></thead>`;
 
   const tbody=rows.map(r=>{
@@ -1892,9 +1992,9 @@ function renderTable(){
     const rowCls=r.semDados?'row-zero':'';
     const kgCell=r.semDados
       ?`<td class="sem-prod">— sem produção</td>`
-      :`<td style="color:var(--green);font-weight:600">${fmtKg(r.kg)}</td>`;
+      :`<td style="color:var(--green);font-weight:600">${fmtMetric(r.kg)}</td>`;
     const acumCell=r.acum>0
-      ?`<td style="color:#4ade80;font-weight:500">${fmtKg(r.acum)}</td>`
+      ?`<td style="color:#4ade80;font-weight:500">${fmtMetric(r.acum)}</td>`
       :`<td style="color:var(--text3)">—</td>`;
     const trStyle=isWeekend?'style="background:rgba(110,118,129,.04)"':'';
     return `<tr class="${rowCls}" ${trStyle}>
@@ -1902,7 +2002,7 @@ function renderTable(){
       <td style="color:${isWeekend?'var(--text3)':'var(--text2)'};font-size:12px">${dow}</td>
       ${kgCell}
       ${acumCell}
-      ${showMeta?`<td>${fmtKg(r.metaDia)}</td><td>${fmtKg(r.metaAcum)}</td>
+      ${showMeta?`<td>${fmtMetric(r.metaDia)}</td><td>${fmtMetric(r.metaAcum)}</td>
       <td class="td-pct ${cls}">${r.pct!==null?r.pct+'%':'—'}${r.pct!==null?`<span class="bar-wrap"><span class="bar-fill" style="width:${barW}%;background:${barColor}"></span></span>`:''}</td>`:''}
     </tr>`;
   }).join('');
@@ -1911,7 +2011,7 @@ function renderTable(){
   const legendaZero=`<div class="legend-row"><span class="legend-item"><span class="legend-dot" style="background:var(--text3)"></span>Dias sem produção registrada</span></div>`;
 
   document.getElementById('table-container').innerHTML=`
-    <div class="section-title">Produção por Dia ${procLabel}</div>
+    <div class="section-title">Produção por Dia (${metricLabel}) ${procLabel}</div>
     ${ano&&mes?legendaZero:''}
     <div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
 }
@@ -1930,6 +2030,9 @@ function renderCharts(){
   const cProc = document.getElementById('c-proc') ? document.getElementById('c-proc').value : loadFilter('graf','proc');
   const cMaq  = document.getElementById('c-maq')  ? document.getElementById('c-maq').value  : loadFilter('graf','maq');
   const cProd = document.getElementById('c-prod') ? document.getElementById('c-prod').value : loadFilter('graf','prod');
+  const cMetric  = document.getElementById('c-metric')   ? document.getElementById('c-metric').value   : (loadFilter('graf','metric')||'kg');
+  const cHoraIni = document.getElementById('c-hora-ini') ? document.getElementById('c-hora-ini').value : loadFilter('graf','horaIni');
+  const cHoraFim = document.getElementById('c-hora-fim') ? document.getElementById('c-hora-fim').value : loadFilter('graf','horaFim');
 
   // listas únicas para os selects
   const allProcessos = [...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
@@ -1951,6 +2054,9 @@ function renderCharts(){
   saveFilter('graf','proc',cProc);
   saveFilter('graf','maq', cMaqValid);
   saveFilter('graf','prod',cProdValid);
+  saveFilter('graf','metric',cMetric);
+  saveFilter('graf','horaIni',cHoraIni);
+  saveFilter('graf','horaFim',cHoraFim);
 
   const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
   const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===cAno?'selected':''}>${a}</option>`).join('');
@@ -1958,11 +2064,22 @@ function renderCharts(){
   const maqOpts  = '<option value="">Todas as máquinas</option>'+allMaquinas.map(m=>`<option value="${encodeHtml(m)}"${m===cMaqValid?'selected':''}>${m}</option>`).join('');
   const prodOpts = '<option value="">Todos os produtos</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?'selected':''}>${p}</option>`).join('');
 
-  // ── dados filtrados por processo + máquina + produto (sem ano/mês ainda)
+  // ── filtro por hora início/fim: mantém registros cujo intervalo de horário
+  // (coluna 2 = hora início, coluna 3 = hora fim) tem sobreposição com o intervalo escolhido
+  function passaHora(r){
+    if(!cHoraIni && !cHoraFim) return true;
+    if(!r.horaIni && !r.horaFim) return true; // registro sem info de horário: não exclui
+    const rIni = r.horaIni || '00:00', rFim = r.horaFim || '23:59';
+    const fIni = cHoraIni || '00:00', fFim = cHoraFim || '23:59';
+    return rIni <= fFim && rFim >= fIni;
+  }
+
+  // ── dados filtrados por processo + máquina + produto + hora (sem ano/mês ainda)
   const baseFilt = rawData.filter(r=>{
     if(cProc && r.proc!==cProc) return false;
     if(cMaqValid && r.maq!==cMaqValid) return false;
     if(cProdValid && r.produto!==cProdValid) return false;
+    if(!passaHora(r)) return false;
     return true;
   });
 
@@ -1970,10 +2087,15 @@ function renderCharts(){
   const anosComDados=[...new Set(baseFilt.map(r=>r.date.substring(0,4)))].sort();
   const anoChart = cAno || anosComDados[anosComDados.length-1] || anosDisp[anosDisp.length-1] || '';
 
+  // ── métrica: kg (coluna 15) ou folhas (coluna 5)
+  const metricKey = cMetric==='folhas' ? 'folhas' : 'kg';
+  const metricLabel = cMetric==='folhas' ? 'Folhas' : 'Kg';
+  const fmtMetric = cMetric==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
+
   // ── dados do ano alvo, agrupados por mês (Jan..Dez)
   const dadosAno = anoChart ? baseFilt.filter(r=>r.date.startsWith(anoChart)) : [];
   const kgPorMes = Array(12).fill(0);
-  dadosAno.forEach(r=>{ const m=parseInt(r.date.substring(5,7))-1; if(m>=0&&m<12) kgPorMes[m]+=r.kg; });
+  dadosAno.forEach(r=>{ const m=parseInt(r.date.substring(5,7))-1; if(m>=0&&m<12) kgPorMes[m]+=(r[metricKey]||0); });
 
   // ── mês usado no gráfico diário: o selecionado, ou o mais recente com dados no ano alvo
   const mesesComDados=[...new Set(dadosAno.map(r=>parseInt(r.date.substring(5,7))))].sort((a,b)=>a-b);
@@ -1982,12 +2104,13 @@ function renderCharts(){
   // ── dados diários do mês/ano alvo
   const diasDoMes = anoChart ? todosOsDias(anoChart, mesChart) : [];
   const byDay={};
-  dadosAno.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+r.kg;});
+  dadosAno.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+(r[metricKey]||0);});
   const kgPorDia = diasDoMes.map(d=>byDay[d]||0);
   const labelsDiario = diasDoMes.map(d=>d.substring(8,10));
 
   const labelMaq = cMaqValid ? encodeHtml(cMaqValid) : 'Total (todas as máquinas)';
   const labelMes = anoChart ? `${MESES_FULL[mesChart-1]}/${anoChart}` : 'sem dados';
+  const labelHora = (cHoraIni||cHoraFim) ? ` — ${cHoraIni||'00:00'} às ${cHoraFim||'23:59'}` : '';
 
   document.getElementById('charts-container').innerHTML=`
     <!-- FILTROS GRÁFICOS -->
@@ -2010,18 +2133,37 @@ function renderCharts(){
         <select id="c-maq" onchange="renderCharts()">${maqOpts}</select></div>
       <div class="filter-group"><label>Produto</label>
         <select id="c-prod" onchange="renderCharts()" style="min-width:200px">${prodOpts}</select></div>
+      <div class="filter-group"><label>Hora início</label>
+        <input id="c-hora-ini" type="time" value="${cHoraIni||''}" onchange="renderCharts()"
+          style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/></div>
+      <div class="filter-group"><label>Hora fim</label>
+        <input id="c-hora-fim" type="time" value="${cHoraFim||''}" onchange="renderCharts()"
+          style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/></div>
+      <div class="filter-group">
+        <label>Ver por</label>
+        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button type="button" onclick="document.getElementById('c-metric').value='kg';renderCharts()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:${cMetric!=='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric!=='folhas'?'#fff':'var(--text2)'}">Kg</button>
+          <button type="button" onclick="document.getElementById('c-metric').value='folhas';renderCharts()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;border-left:1px solid var(--border);background:${cMetric==='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric==='folhas'?'#fff':'var(--text2)'}">Folhas</button>
+        </div>
+        <select id="c-metric" style="display:none">
+          <option value="kg"${cMetric!=='folhas'?' selected':''}>kg</option>
+          <option value="folhas"${cMetric==='folhas'?' selected':''}>folhas</option>
+        </select>
+      </div>
     </div>
 
     <!-- MENSAL JAN-DEZ (1 MÁQUINA POR VEZ) -->
-    <div class="section-title">Produção Mensal — ${labelMaq} — ${anoChart||'—'}</div>
+    <div class="section-title">Produção Mensal (${metricLabel}) — ${labelMaq} — ${anoChart||'—'}${labelHora}</div>
     <div class="chart-box"><canvas id="chart-maq-bar"></canvas></div>
 
     <!-- DIÁRIO DENTRO DO MÊS -->
-    <div class="section-title">Produção Diária — ${labelMaq} — ${labelMes}</div>
+    <div class="section-title">Produção Diária (${metricLabel}) — ${labelMaq} — ${labelMes}${labelHora}</div>
     <div class="chart-box"><canvas id="chart-day-bar"></canvas></div>
 
     <!-- EVOLUÇÃO ACUMULADA NO ANO -->
-    <div class="section-title">Evolução Mensal (Acumulada) — ${labelMaq} — ${anoChart||'—'}</div>
+    <div class="section-title">Evolução Mensal Acumulada (${metricLabel}) — ${labelMaq} — ${anoChart||'—'}${labelHora}</div>
     <div class="chart-box"><canvas id="chart-maq-line"></canvas></div>
   `;
 
@@ -2050,21 +2192,143 @@ function renderCharts(){
   const base={
     responsive:true,maintainAspectRatio:true,layout:{padding:{top:18}},
     plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e'}},
-    scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtKg(v)},grid:{color:'#21262d'}}}
+    scales:{x:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'}},y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>fmtMetric(v)},grid:{color:'#21262d'}}}
   };
 
-  if(document.getElementById('chart-maq-bar')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-bar'),{type:'bar',data:{labels:MESES_FULL,datasets:datasetMensal},options:base,plugins:[valueLabelsPlugin]}));
+  function criarGrafico(canvasId, config){
+    const el=document.getElementById(canvasId);
+    if(!el) return;
+    try{
+      const chart=new Chart(el, config);
+      chart.$valueLabelFormatter=fmtMetric; // propriedade simples — NÃO colocar em options (vira scriptable option e quebra)
+      chartInstances.push(chart);
+    }catch(e){
+      console.error('Erro ao criar gráfico', canvasId, e);
+      const box=el.closest('.chart-box');
+      if(box) box.innerHTML='<div class="empty" style="padding:20px"><p>Não foi possível desenhar este gráfico. Veja o console (F12) para detalhes.</p></div>';
+    }
   }
-  if(document.getElementById('chart-day-bar')){
-    chartInstances.push(new Chart(document.getElementById('chart-day-bar'),{type:'bar',data:{labels:labelsDiario,datasets:datasetDiario},options:base,plugins:[valueLabelsPlugin]}));
-  }
-  if(document.getElementById('chart-maq-line')){
-    chartInstances.push(new Chart(document.getElementById('chart-maq-line'),{type:'line',data:{labels:MESES_FULL,datasets:datasetAcumulado},options:base,plugins:[valueLabelsPlugin]}));
-  }
+
+  criarGrafico('chart-maq-bar', {type:'bar',data:{labels:MESES_FULL,datasets:datasetMensal},options:base,plugins:[valueLabelsPlugin]});
+  criarGrafico('chart-day-bar', {type:'bar',data:{labels:labelsDiario,datasets:datasetDiario},options:base,plugins:[valueLabelsPlugin]});
+  criarGrafico('chart-maq-line', {type:'line',data:{labels:MESES_FULL,datasets:datasetAcumulado},options:base,plugins:[valueLabelsPlugin]});
 }
 
 function encodeHtml(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ===== ANÁLISE POR PRODUTO =====
+function renderProdutoAnalise(){
+  if(rawData.length===0) return;
+
+  const cProd   = document.getElementById('p-produto') ? document.getElementById('p-produto').value : loadFilter('produto','produto');
+  const cAno    = document.getElementById('p-ano')     ? document.getElementById('p-ano').value     : loadFilter('produto','ano');
+  const cMes    = document.getElementById('p-mes')     ? document.getElementById('p-mes').value     : loadFilter('produto','mes');
+  const cMetric = document.getElementById('p-metric')  ? document.getElementById('p-metric').value  : (loadFilter('produto','metric')||'kg');
+
+  const allProdutos = [...new Set(rawData.map(r=>r.produto).filter(Boolean))].sort();
+  const cProdValid = allProdutos.includes(cProd) ? cProd : '';
+
+  const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const anoChart = cAno || anosDisp[anosDisp.length-1] || '';
+
+  const metricKey = cMetric==='folhas' ? 'folhas' : 'kg';
+  const metricLabel = cMetric==='folhas' ? 'Folhas' : 'Kg';
+  const fmtMetric = cMetric==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
+
+  // dados do produto no ano (para descobrir qual mês tem dados por padrão)
+  const dadosProdAno = cProdValid ? rawData.filter(r=>r.produto===cProdValid && r.date.startsWith(anoChart)) : [];
+  const mesesComDados = [...new Set(dadosProdAno.map(r=>parseInt(r.date.substring(5,7))))].sort((a,b)=>a-b);
+  const mesChart = parseInt(cMes) || mesesComDados[mesesComDados.length-1] || (new Date()).getMonth()+1;
+
+  saveFilter('produto','produto',cProdValid);
+  saveFilter('produto','ano',anoChart);
+  saveFilter('produto','mes',String(mesChart));
+  saveFilter('produto','metric',cMetric);
+
+  const prodOpts = '<option value="">Selecione um produto</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?' selected':''}>${p}</option>`).join('');
+  const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===anoChart?' selected':''}>${a}</option>`).join('');
+  const mesOpts  = MESES_FULL.map((m,i)=>`<option value="${i+1}"${(i+1)===mesChart?' selected':''}>${m}</option>`).join('');
+
+  let bodyHtml;
+  if(!cProdValid){
+    bodyHtml = `<div class="empty" style="margin-top:20px"><p>Selecione um produto para ver a análise diária.</p></div>`;
+  } else {
+    const diasDoMes = todosOsDias(anoChart, mesChart);
+    const dadosMes = dadosProdAno.filter(r=>parseInt(r.date.substring(5,7))===mesChart);
+
+    // agrupa por dia: soma horas (coluna 4), soma kg/folhas (coluna 15 ou 5), junta processos do dia
+    const byDay={};
+    dadosMes.forEach(r=>{
+      if(!byDay[r.date]) byDay[r.date]={horas:0, valor:0, procs:new Set()};
+      byDay[r.date].horas += (r.horas||0);
+      byDay[r.date].valor += (r[metricKey]||0);
+      if(r.proc) byDay[r.date].procs.add(r.proc);
+    });
+
+    const rows = diasDoMes.map(d=>{
+      const agg = byDay[d] || {horas:0, valor:0, procs:new Set()};
+      const media = agg.horas>0 ? agg.valor/agg.horas : 0;
+      return {d, procDesc:[...agg.procs].join(' / '), horas:agg.horas, valor:agg.valor, media};
+    });
+
+    const totalHoras = rows.reduce((s,r)=>s+r.horas,0);
+    const totalValor = rows.reduce((s,r)=>s+r.valor,0);
+    const mediaGeral = totalHoras>0 ? totalValor/totalHoras : 0;
+
+    bodyHtml = `
+      <div class="cards-grid" style="margin-bottom:16px">
+        <div class="card blue"><span class="card-label">Total ${metricLabel}</span><span class="card-value">${fmtMetric(totalValor)}</span><span class="card-sub">${MESES_FULL[mesChart-1]}/${anoChart}</span></div>
+        <div class="card"><span class="card-label">Total Horas</span><span class="card-value">${fmtKg(totalHoras)}</span><span class="card-sub">horas produzidas</span></div>
+        <div class="card yellow"><span class="card-label">Média/Hora</span><span class="card-value">${fmtMetric(mediaGeral)}</span><span class="card-sub">${metricLabel}/h</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Dia</th><th>Proc. Descrição</th><th>Total Horas</th><th>Total ${metricLabel}</th><th>Média ${metricLabel}/Hora</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(r=>{
+              const dow=SEMANA[new Date(r.d+'T12:00:00').getDay()];
+              const semDados = r.valor===0 && r.horas===0;
+              return `<tr class="${semDados?'row-zero':''}">
+                <td>${fmtDate(r.d)} <span style="color:var(--text3);font-size:12px">(${dow})</span></td>
+                <td>${r.procDesc?encodeHtml(r.procDesc):'<span style="color:var(--text3)">—</span>'}</td>
+                <td>${r.horas>0?fmtKg(r.horas):'<span style="color:var(--text3)">—</span>'}</td>
+                <td>${r.valor>0?fmtMetric(r.valor):'<span style="color:var(--text3)">—</span>'}</td>
+                <td>${r.horas>0?fmtMetric(r.media):'<span style="color:var(--text3)">—</span>'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  document.getElementById('produto-container').innerHTML = `
+    <div class="filters" style="margin-bottom:20px">
+      <div class="filter-group"><label>Produto</label>
+        <select id="p-produto" onchange="renderProdutoAnalise()" style="min-width:220px">${prodOpts}</select></div>
+      <div class="filter-group"><label>Ano</label>
+        <select id="p-ano" onchange="renderProdutoAnalise()">${anoOpts}</select></div>
+      <div class="filter-group"><label>Mês</label>
+        <select id="p-mes" onchange="renderProdutoAnalise()">${mesOpts}</select></div>
+      <div class="filter-group">
+        <label>Ver por</label>
+        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button type="button" onclick="document.getElementById('p-metric').value='kg';renderProdutoAnalise()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:${cMetric!=='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric!=='folhas'?'#fff':'var(--text2)'}">Kg</button>
+          <button type="button" onclick="document.getElementById('p-metric').value='folhas';renderProdutoAnalise()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;border-left:1px solid var(--border);background:${cMetric==='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric==='folhas'?'#fff':'var(--text2)'}">Folhas</button>
+        </div>
+        <select id="p-metric" style="display:none">
+          <option value="kg"${cMetric!=='folhas'?' selected':''}>kg</option>
+          <option value="folhas"${cMetric==='folhas'?' selected':''}>folhas</option>
+        </select>
+      </div>
+    </div>
+    <div class="section-title">Análise por Produto — ${cProdValid?encodeHtml(cProdValid):'—'} — ${MESES_FULL[mesChart-1]}/${anoChart}</div>
+    ${bodyHtml}
+  `;
+}
 
 // ===== METAS =====
 function loadMetas(){try{const s=localStorage.getItem('prod_metas');if(s)metas=JSON.parse(s);}catch(e){}}
@@ -2163,7 +2427,12 @@ function renderMetaList(){
 }
 
 // ===== HELPERS =====
-function fmtKg(v){if(v===null||v===undefined)return '—';return Number(v.toFixed(1)).toLocaleString('pt-BR');}
+function fmtKg(v){
+  if(v===null||v===undefined||v==='') return '—';
+  const n=Number(v);
+  if(isNaN(n)) return '—';
+  return Number(n.toFixed(1)).toLocaleString('pt-BR');
+}
 function fmtDate(d){const[y,m,dd]=d.split('-');return `${dd}/${m}/${y}`;}
 function toast(msg,type='success'){
   const t=document.getElementById('toast');
