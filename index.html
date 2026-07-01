@@ -2026,6 +2026,17 @@ function renderTable(){
   const pctGeral=metaTotalAcum>0?Math.round(total/metaTotalAcum*100):null;
   const media=diasComProd>0?total/diasComProd:0;
 
+  const totalCarregado = rawData.length;
+  const comHoraCarregado = rawData.filter(r=>r.horaIni).length;
+  const comFolhasCarregado = rawData.filter(r=>r.folhas>0).length;
+  const amostraHora = rawData.find(r=>r.horaIni)?.horaIni || '(nenhum registro tem hora)';
+  const diagLinha = `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:4px 0">
+    📊 Diagnóstico atual: <b>${totalCarregado.toLocaleString('pt-BR')}</b> registros carregados ·
+    <b>${comHoraCarregado.toLocaleString('pt-BR')}</b> com hora preenchida ·
+    <b>${comFolhasCarregado.toLocaleString('pt-BR')}</b> com folhas&gt;0 ·
+    exemplo de hora: <b>${amostraHora}</b>
+  </div>`;
+
   const turnoSelDash=document.getElementById('sel-turno')?document.getElementById('sel-turno').value:'';
   const semHoraCarregadaDash = turnoSelDash && !rawData.some(r=>r.horaIni);
   const avisoTurno = semHoraCarregadaDash
@@ -2044,6 +2055,7 @@ function renderTable(){
     : '';
 
   document.getElementById('cards-container').innerHTML=`
+    ${diagLinha}
     ${avisoTurno}
     ${avisoFolhas}
     <div class="cards-grid" style="margin-bottom:16px">
