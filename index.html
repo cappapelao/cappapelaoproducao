@@ -194,6 +194,7 @@ td.sem-prod{color:var(--text3);}
       <button class="nav-tab" onclick="goPage('graficos')">Gráficos</button>
       <button class="nav-tab" onclick="goPage('produto')">Produto</button>
       <button class="nav-tab" onclick="goPage('metas')">Metas</button>
+      <button class="nav-tab" onclick="goPage('vinculos')">Vínculos</button>
       <button class="nav-tab" onclick="goPage('dados')">Dados</button>
     </div>
     <div class="nav-right">
@@ -552,6 +553,43 @@ td.sem-prod{color:var(--text3);}
 
     <div id="meta-list" style="margin-top:8px"></div>
   </div>
+
+  <!-- VÍNCULOS PROCESSO x MÁQUINA -->
+  <div class="page" id="page-vinculos">
+    <div class="section-title" style="margin-bottom:6px">Vínculo Processo × Máquina</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:20px;max-width:640px">
+      Defina aqui quais máquinas pertencem a cada processo. Quando um processo tiver um vínculo
+      cadastrado, o filtro de <strong>Máquina</strong> na tela de Gráficos vai mostrar exatamente
+      essas máquinas (em vez de descobrir automaticamente pelos dados importados).
+    </p>
+
+    <div class="meta-form" style="margin-bottom:24px">
+      <h3>🔗 Configurar vínculo</h3>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Processo</label>
+        <select id="v-proc" onchange="carregarMaquinasDoVinculo()">
+          <option value="">— Selecione um processo —</option>
+          <option value="CALANDRA">CALANDRA</option>
+          <option value="CORTE">CORTE</option>
+          <option value="EXPEDIÇÃO (APONTAMENTO)">EXPEDIÇÃO (APONTAMENTO)</option>
+          <option value="FOLHADEIRA">FOLHADEIRA</option>
+          <option value="HOLANDEZA">HOLANDEZA</option>
+          <option value="QUALIDADE (INSPEÇÃO)">QUALIDADE (INSPEÇÃO)</option>
+          <option value="SECADOR">SECADOR</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Máquinas deste processo (Ctrl/Cmd+clique para selecionar várias)</label>
+        <select id="v-maquinas" multiple size="8" style="min-height:160px"></select>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn-save" onclick="salvarVinculo()">Salvar Vínculo</button>
+      </div>
+    </div>
+
+    <div class="section-title">Vínculos Cadastrados</div>
+    <div id="vinculo-list"></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -614,9 +652,10 @@ function doLogin(){
 
     // oculta abas restritas para perfil view
     if(currentRole==='view'){
-      document.querySelectorAll('.nav-tab').forEach((btn,i)=>{
-        // esconde: importar(0), gráficos(4), metas(5)
-        if([0,4,5].includes(i)) btn.style.display='none';
+      document.querySelectorAll('.nav-tab').forEach(btn=>{
+        const onclickAttr = btn.getAttribute('onclick')||'';
+        // esconde: importar, gráficos, metas, vínculos
+        if(/goPage\('(importar|graficos|metas|vinculos)'\)/.test(onclickAttr)) btn.style.display='none';
       });
     }
 
@@ -907,6 +946,7 @@ async function buscarDoServidor(){
     });
 
     await carregarMetasSupabase();
+    await carregarVinculosSupabase();
     popularFiltros();
 
     // Remove overlay
@@ -1556,7 +1596,7 @@ function popularFiltros(){
 }
 
 // ===== NAV =====
-const PAGES=['importar','dashboard','qualidade','global','graficos','produto','metas','dados'];
+const PAGES=['importar','dashboard','qualidade','global','graficos','produto','metas','vinculos','dados'];
 function goPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -1569,6 +1609,7 @@ function goPage(p){
   if(p==='global') renderGlobal();
   if(p==='produto') renderProdutoAnalise();
   if(p==='metas') renderMetaList();
+  if(p==='vinculos') renderVinculos();
   if(p==='dados') initDados();
 }
 function toggleMenu(){document.getElementById('nav-tabs').classList.toggle('open');}
@@ -1576,6 +1617,7 @@ function toggleMenu(){document.getElementById('nav-tabs').classList.toggle('open
 // ===== DATA =====
 let rawData=[];
 let metas={};
+let vinculos={}; // { PROCESSO: ['Máquina 1','Máquina 2', ...] }
 let allProcessos=[];
 
 // ===== PERSISTÊNCIA LOCAL DOS DADOS =====
@@ -2075,7 +2117,10 @@ function renderCharts(){
 
   // máquinas filtradas pelo processo selecionado (ex: CALANDRA → só máquinas de calandra)
   const maqSource = cProc ? rawData.filter(r=>r.proc===cProc) : rawData;
-  const allMaquinas = [...new Set(maqSource.map(r=>r.maq).filter(Boolean))].sort();
+  // se existe um vínculo cadastrado (tela Vínculos) para o processo selecionado,
+  // o dropdown de Máquina usa exatamente essa lista, em vez de descobrir pelos dados
+  const vinculoMaqs = (cProc && vinculos[cProc] && vinculos[cProc].length) ? vinculos[cProc].slice().sort() : null;
+  const allMaquinas = vinculoMaqs || [...new Set(maqSource.map(r=>r.maq).filter(Boolean))].sort();
   // se a máquina selecionada não pertence ao processo atual, reseta
   const cMaqValid = allMaquinas.includes(cMaq) ? cMaq : '';
 
@@ -2377,6 +2422,124 @@ function renderProdutoAnalise(){
 function loadMetas(){try{const s=localStorage.getItem('prod_metas');if(s)metas=JSON.parse(s);}catch(e){}}
 function saveMetas(){localStorage.setItem('prod_metas',JSON.stringify(metas));}
 loadMetas();
+
+// ===== VÍNCULOS PROCESSO x MÁQUINA =====
+function loadVinculosLocal(){try{const s=localStorage.getItem('prod_vinculos');if(s)vinculos=JSON.parse(s);}catch(e){}}
+function saveVinculosLocal(){localStorage.setItem('prod_vinculos',JSON.stringify(vinculos));}
+loadVinculosLocal();
+
+async function carregarVinculosSupabase(){
+  try{
+    const rows = await sbFetch('vinculos_processo_maquina','select=*');
+    if(rows && rows.length>0){
+      const novo={};
+      rows.forEach(r=>{
+        if(!r.processo || !r.maquina) return;
+        if(!novo[r.processo]) novo[r.processo]=[];
+        if(!novo[r.processo].includes(r.maquina)) novo[r.processo].push(r.maquina);
+      });
+      vinculos=novo;
+      saveVinculosLocal();
+    }
+  }catch(e){ console.warn('Vínculos Supabase erro:', e); }
+  const pagAtiva=document.querySelector('.page.active');
+  if(pagAtiva && pagAtiva.id==='page-vinculos') renderVinculos();
+  if(pagAtiva && pagAtiva.id==='page-graficos') renderCharts();
+}
+
+async function salvarVinculoSupabase(processo, maquina){
+  try{
+    const r=await fetch(`${SB_URL}/vinculos_processo_maquina`,{
+      method:'POST',
+      headers:{...SB_HEADERS,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({processo, maquina})
+    });
+    if(!r.ok) throw new Error(await r.text());
+  }catch(e){ console.warn('Erro ao salvar vínculo no Supabase:', e); }
+}
+
+async function deletarVinculoSupabase(processo, maquina){
+  try{
+    await fetch(`${SB_URL}/vinculos_processo_maquina?processo=eq.${encodeURIComponent(processo)}&maquina=eq.${encodeURIComponent(maquina)}`,{
+      method:'DELETE', headers:SB_HEADERS
+    });
+  }catch(e){ console.warn('Erro ao deletar vínculo:', e); }
+}
+
+// preenche a lista de máquinas disponíveis para escolher e marca as já vinculadas
+function carregarMaquinasDoVinculo(){
+  const proc=document.getElementById('v-proc').value;
+  const sel=document.getElementById('v-maquinas');
+  const todasMaquinas=[...new Set(rawData.map(r=>r.maq).filter(Boolean))].sort();
+  const vinculadas=vinculos[proc]||[];
+  sel.innerHTML = todasMaquinas.map(m=>
+    `<option value="${encodeHtml(m)}"${vinculadas.includes(m)?' selected':''}>${m}</option>`
+  ).join('');
+}
+
+function salvarVinculo(){
+  const proc=document.getElementById('v-proc').value;
+  if(!proc){ toast('Selecione um processo.','error'); return; }
+  const sel=document.getElementById('v-maquinas');
+  const novasMaquinas=[...sel.selectedOptions].map(o=>o.value);
+  const antigas=vinculos[proc]||[];
+
+  const adicionadas=novasMaquinas.filter(m=>!antigas.includes(m));
+  const removidas=antigas.filter(m=>!novasMaquinas.includes(m));
+
+  if(novasMaquinas.length===0){ delete vinculos[proc]; } else { vinculos[proc]=novasMaquinas; }
+  saveVinculosLocal();
+
+  adicionadas.forEach(m=>salvarVinculoSupabase(proc,m));
+  removidas.forEach(m=>deletarVinculoSupabase(proc,m));
+
+  toast('Vínculo salvo!','success');
+  renderVinculos();
+}
+
+function removerVinculoMaquina(proc, maquina){
+  if(!vinculos[proc]) return;
+  vinculos[proc]=vinculos[proc].filter(m=>m!==maquina);
+  if(vinculos[proc].length===0) delete vinculos[proc];
+  saveVinculosLocal();
+  deletarVinculoSupabase(proc, maquina);
+  renderVinculos();
+}
+
+function removerVinculoProcesso(proc){
+  const maquinas=vinculos[proc]||[];
+  delete vinculos[proc];
+  saveVinculosLocal();
+  maquinas.forEach(m=>deletarVinculoSupabase(proc,m));
+  toast('Vínculo removido.','success');
+  renderVinculos();
+}
+
+function renderVinculos(){
+  const selProc=document.getElementById('v-proc');
+  if(selProc) carregarMaquinasDoVinculo();
+
+  const procs=Object.keys(vinculos).sort();
+  if(procs.length===0){
+    document.getElementById('vinculo-list').innerHTML='<div class="empty"><p>Nenhum vínculo cadastrado ainda. Todas as máquinas continuam sendo detectadas automaticamente pelos dados.</p></div>';
+    return;
+  }
+  document.getElementById('vinculo-list').innerHTML = procs.map(proc=>{
+    const maquinas=(vinculos[proc]||[]).slice().sort();
+    return `<div class="meta-item" style="align-items:flex-start;flex-direction:column;gap:8px;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <span class="meta-item-title">${encodeHtml(proc)}</span>
+        <button class="btn-del" title="Remover todo o vínculo" onclick="removerVinculoProcesso('${proc.replace(/'/g,"\\'")}')">×</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${maquinas.map(m=>`<span class="proc-tag" style="display:inline-flex;align-items:center;gap:6px">
+          ${encodeHtml(m)}
+          <span style="cursor:pointer;opacity:.7" onclick="removerVinculoMaquina('${proc.replace(/'/g,"\\'")}','${m.replace(/'/g,"\\'")}')">✕</span>
+        </span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
 
 function toggleMetaForm(show){
   const wrap=document.getElementById('meta-form-wrap');
