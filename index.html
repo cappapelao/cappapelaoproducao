@@ -313,14 +313,13 @@ td.sem-prod{color:var(--text3);}
           <select id="sel-proc" onchange="renderTable()"></select>
         </div>
         <div class="filter-group">
-          <label>Hora início</label>
-          <input id="sel-hora-ini" type="time" onchange="renderTable()"
-            style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/>
-        </div>
-        <div class="filter-group">
-          <label>Hora fim</label>
-          <input id="sel-hora-fim" type="time" onchange="renderTable()"
-            style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/>
+          <label>Turno</label>
+          <select id="sel-turno" onchange="renderTable()" style="min-width:170px">
+            <option value="">Total (todos os turnos)</option>
+            <option value="1">1º Turno (05:00–13:30)</option>
+            <option value="2">2º Turno (13:30–22:00)</option>
+            <option value="3">3º Turno (22:00–05:00)</option>
+          </select>
         </div>
         <div class="filter-group">
           <label>Ver por</label>
@@ -894,6 +893,18 @@ async function buscarDoServidor(){
     salvarDadosLocais();
 
     console.log(`Supabase: ${todos.length} brutos → ${rawData.length} carregados`);
+    console.log('🔎 DIAGNÓSTICO — 1º registro BRUTO vindo do Supabase:', todos[0]);
+    console.log('🔎 DIAGNÓSTICO — 1º registro NORMALIZADO (usado nos filtros/gráficos):', rawData[0]);
+    console.log('🔎 DIAGNÓSTICO — registros com folhas>0:', rawData.filter(r=>r.folhas>0).length, '/', rawData.length);
+    console.log('🔎 DIAGNÓSTICO — registros com horaIni preenchida:', rawData.filter(r=>r.horaIni).length, '/', rawData.length);
+    console.log('🔎 DIAGNÓSTICO — amostra de valores de horaIni (5 primeiros distintos):',
+      [...new Set(rawData.map(r=>r.horaIni).filter(Boolean))].slice(0,5));
+    console.log('🔎 DIAGNÓSTICO — distribuição por turno (1/2/3/sem-hora):', {
+      turno1: rawData.filter(r=>turnoOf(r.horaIni)===1).length,
+      turno2: rawData.filter(r=>turnoOf(r.horaIni)===2).length,
+      turno3: rawData.filter(r=>turnoOf(r.horaIni)===3).length,
+      semHora: rawData.filter(r=>!r.horaIni).length
+    });
 
     await carregarMetasSupabase();
     popularFiltros();
@@ -1523,10 +1534,8 @@ function popularFiltros(){
   if(selProc){ selProc.innerHTML=procOpts; selProc.value=loadFilter('dash','proc')||''; }
   const selMes=document.getElementById('sel-mes');
   if(selMes) selMes.value=loadFilter('dash','mes')||'';
-  const selHoraIni=document.getElementById('sel-hora-ini');
-  if(selHoraIni) selHoraIni.value=loadFilter('dash','horaIni')||'';
-  const selHoraFim=document.getElementById('sel-hora-fim');
-  if(selHoraFim) selHoraFim.value=loadFilter('dash','horaFim')||'';
+  const selTurno=document.getElementById('sel-turno');
+  if(selTurno) selTurno.value=loadFilter('dash','turno')||'';
   if(document.getElementById('sel-metric')) setDashMetric(loadFilter('dash','metric')||'kg', true);
   const mProc=document.getElementById('m-proc');
   if(mProc) mProc.innerHTML='<option value="">— Todos os processos (geral) —</option>'+allProcessos.map(p=>`<option value="${p}">${p}</option>`).join('');
@@ -1814,22 +1823,32 @@ function getDashMetric(){
   return (sel && sel.value==='folhas') ? 'folhas' : 'kg';
 }
 
+// classifica um horário em turno 1, 2 ou 3
+// aceita 'HH:MM', 'HH:MM:SS' ou qualquer string que comece com HH:MM
+// 1º Turno: 05:00–13:30 | 2º Turno: 13:30–22:00 | 3º Turno: 22:00–05:00 (atravessa a meia-noite)
+function turnoOf(horaRaw){
+  if(!horaRaw) return null;
+  const m = String(horaRaw).trim().match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  const hh = String(m[1]).padStart(2,'0');
+  const hora = `${hh}:${m[2]}`;
+  if(hora>='05:00' && hora<'13:30') return 1;
+  if(hora>='13:30' && hora<'22:00') return 2;
+  return 3; // 22:00–23:59 e 00:00–04:59
+}
+
 function getFiltered(){
   const ano=document.getElementById('sel-ano').value;
   const mes=document.getElementById('sel-mes').value;
   const proc=document.getElementById('sel-proc').value;
-  const horaIniEl=document.getElementById('sel-hora-ini'), horaFimEl=document.getElementById('sel-hora-fim');
-  const horaIni=horaIniEl?horaIniEl.value:'', horaFim=horaFimEl?horaFimEl.value:'';
+  const turnoEl=document.getElementById('sel-turno');
+  const turno=turnoEl?turnoEl.value:'';
   return rawData.filter(r=>{
     if(ano&&!r.date.startsWith(ano)) return false;
     if(mes&&parseInt(r.date.substring(5,7))!==parseInt(mes)) return false;
     if(proc&&r.proc!==proc) return false;
-    if(horaIni||horaFim){
-      if(r.horaIni||r.horaFim){
-        const rIni=r.horaIni||'00:00', rFim=r.horaFim||'23:59';
-        const fIni=horaIni||'00:00', fFim=horaFim||'23:59';
-        if(!(rIni<=fFim && rFim>=fIni)) return false;
-      }
+    if(turno){
+      if(r.horaIni && turnoOf(r.horaIni)!==parseInt(turno)) return false;
     }
     return true;
   });
@@ -1890,9 +1909,8 @@ function renderTable(){
   saveFilter('dash','ano',document.getElementById('sel-ano').value);
   saveFilter('dash','mes',document.getElementById('sel-mes').value);
   saveFilter('dash','proc',document.getElementById('sel-proc').value);
-  const horaIniEl=document.getElementById('sel-hora-ini'), horaFimEl=document.getElementById('sel-hora-fim');
-  saveFilter('dash','horaIni', horaIniEl?horaIniEl.value:'');
-  saveFilter('dash','horaFim', horaFimEl?horaFimEl.value:'');
+  const turnoEl=document.getElementById('sel-turno');
+  saveFilter('dash','turno', turnoEl?turnoEl.value:'');
   const data=getFiltered();
 
   const metricKey = getDashMetric();
@@ -1966,7 +1984,26 @@ function renderTable(){
   const pctGeral=metaTotalAcum>0?Math.round(total/metaTotalAcum*100):null;
   const media=diasComProd>0?total/diasComProd:0;
 
+  const turnoSelDash=document.getElementById('sel-turno')?document.getElementById('sel-turno').value:'';
+  const semHoraCarregadaDash = turnoSelDash && !rawData.some(r=>r.horaIni);
+  const avisoTurno = semHoraCarregadaDash
+    ? `<div class="empty" style="padding:14px;margin-bottom:12px;border:1px dashed var(--yellow);border-radius:8px;color:var(--yellow);font-size:13px">
+        ⚠️ O filtro de <b>Turno</b> não teve efeito porque nenhum registro carregado tem hora de início preenchida.
+        Confirme as colunas <code>hora_inicio</code>/<code>hora_fim</code> no Supabase e reimporte o arquivo.
+       </div>`
+    : '';
+
+  const avisoFolhas = (metricKey==='folhas' && total===0 && data.length>0)
+    ? `<div class="empty" style="padding:14px;margin-bottom:12px;border:1px dashed var(--yellow);border-radius:8px;color:var(--yellow);font-size:13px">
+        ⚠️ Nenhum valor de <b>Folhas</b> encontrado nos dados carregados. Se você importou o arquivo recentemente,
+        confirme que as colunas <code>folhas</code>/<code>horas</code> existem na tabela <code>producao_admin</code> do Supabase
+        e reimporte o arquivo (Importar → selecionar o .txt novamente).
+       </div>`
+    : '';
+
   document.getElementById('cards-container').innerHTML=`
+    ${avisoTurno}
+    ${avisoFolhas}
     <div class="cards-grid" style="margin-bottom:16px">
       <div class="card blue"><span class="card-label">Total Produzido</span><span class="card-value">${fmtMetric(total)}</span><span class="card-sub">${metricLabel.toUpperCase()} no período</span></div>
       <div class="card"><span class="card-label">Média/Dia produzido</span><span class="card-value">${fmtMetric(media)}</span><span class="card-sub">${diasComProd} de ${days.length} dias</span></div>
@@ -2031,8 +2068,7 @@ function renderCharts(){
   const cMaq  = document.getElementById('c-maq')  ? document.getElementById('c-maq').value  : loadFilter('graf','maq');
   const cProd = document.getElementById('c-prod') ? document.getElementById('c-prod').value : loadFilter('graf','prod');
   const cMetric  = document.getElementById('c-metric')   ? document.getElementById('c-metric').value   : (loadFilter('graf','metric')||'kg');
-  const cHoraIni = document.getElementById('c-hora-ini') ? document.getElementById('c-hora-ini').value : loadFilter('graf','horaIni');
-  const cHoraFim = document.getElementById('c-hora-fim') ? document.getElementById('c-hora-fim').value : loadFilter('graf','horaFim');
+  const cTurno = document.getElementById('c-turno') ? document.getElementById('c-turno').value : loadFilter('graf','turno');
 
   // listas únicas para os selects
   const allProcessos = [...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
@@ -2055,8 +2091,7 @@ function renderCharts(){
   saveFilter('graf','maq', cMaqValid);
   saveFilter('graf','prod',cProdValid);
   saveFilter('graf','metric',cMetric);
-  saveFilter('graf','horaIni',cHoraIni);
-  saveFilter('graf','horaFim',cHoraFim);
+  saveFilter('graf','turno',cTurno);
 
   const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
   const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===cAno?'selected':''}>${a}</option>`).join('');
@@ -2064,14 +2099,11 @@ function renderCharts(){
   const maqOpts  = '<option value="">Todas as máquinas</option>'+allMaquinas.map(m=>`<option value="${encodeHtml(m)}"${m===cMaqValid?'selected':''}>${m}</option>`).join('');
   const prodOpts = '<option value="">Todos os produtos</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?'selected':''}>${p}</option>`).join('');
 
-  // ── filtro por hora início/fim: mantém registros cujo intervalo de horário
-  // (coluna 2 = hora início, coluna 3 = hora fim) tem sobreposição com o intervalo escolhido
+  // ── filtro por turno: 1º (05:00–13:30), 2º (13:30–22:00), 3º (22:00–05:00)
   function passaHora(r){
-    if(!cHoraIni && !cHoraFim) return true;
-    if(!r.horaIni && !r.horaFim) return true; // registro sem info de horário: não exclui
-    const rIni = r.horaIni || '00:00', rFim = r.horaFim || '23:59';
-    const fIni = cHoraIni || '00:00', fFim = cHoraFim || '23:59';
-    return rIni <= fFim && rFim >= fIni;
+    if(!cTurno) return true;
+    if(!r.horaIni) return true; // registro sem info de horário: não exclui
+    return turnoOf(r.horaIni)===parseInt(cTurno);
   }
 
   // ── dados filtrados por processo + máquina + produto + hora (sem ano/mês ainda)
@@ -2110,7 +2142,15 @@ function renderCharts(){
 
   const labelMaq = cMaqValid ? encodeHtml(cMaqValid) : 'Total (todas as máquinas)';
   const labelMes = anoChart ? `${MESES_FULL[mesChart-1]}/${anoChart}` : 'sem dados';
-  const labelHora = (cHoraIni||cHoraFim) ? ` — ${cHoraIni||'00:00'} às ${cHoraFim||'23:59'}` : '';
+  const labelHora = cTurno ? ` — ${cTurno}º Turno` : '';
+  const semHoraCarregada = cTurno && !rawData.some(r=>r.horaIni);
+  const avisoTurno = semHoraCarregada
+    ? `<div class="empty" style="padding:14px;margin-bottom:16px;border:1px dashed var(--yellow);border-radius:8px;color:var(--yellow);font-size:13px">
+        ⚠️ O filtro de <b>Turno</b> não teve efeito porque nenhum registro carregado tem hora de início preenchida.
+        Confirme que as colunas <code>hora_inicio</code>/<code>hora_fim</code> existem na tabela <code>producao_admin</code> do Supabase
+        e reimporte o arquivo (Importar → selecionar o .txt novamente) para que os horários sejam gravados.
+       </div>`
+    : '';
 
   document.getElementById('charts-container').innerHTML=`
     <!-- FILTROS GRÁFICOS -->
@@ -2133,12 +2173,13 @@ function renderCharts(){
         <select id="c-maq" onchange="renderCharts()">${maqOpts}</select></div>
       <div class="filter-group"><label>Produto</label>
         <select id="c-prod" onchange="renderCharts()" style="min-width:200px">${prodOpts}</select></div>
-      <div class="filter-group"><label>Hora início</label>
-        <input id="c-hora-ini" type="time" value="${cHoraIni||''}" onchange="renderCharts()"
-          style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/></div>
-      <div class="filter-group"><label>Hora fim</label>
-        <input id="c-hora-fim" type="time" value="${cHoraFim||''}" onchange="renderCharts()"
-          style="padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"/></div>
+      <div class="filter-group"><label>Turno</label>
+        <select id="c-turno" onchange="renderCharts()" style="min-width:170px">
+          <option value="">Total (todos os turnos)</option>
+          <option value="1"${cTurno==='1'?' selected':''}>1º Turno (05:00–13:30)</option>
+          <option value="2"${cTurno==='2'?' selected':''}>2º Turno (13:30–22:00)</option>
+          <option value="3"${cTurno==='3'?' selected':''}>3º Turno (22:00–05:00)</option>
+        </select></div>
       <div class="filter-group">
         <label>Ver por</label>
         <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
@@ -2153,6 +2194,8 @@ function renderCharts(){
         </select>
       </div>
     </div>
+
+    ${avisoTurno}
 
     <!-- MENSAL JAN-DEZ (1 MÁQUINA POR VEZ) -->
     <div class="section-title">Produção Mensal (${metricLabel}) — ${labelMaq} — ${anoChart||'—'}${labelHora}</div>
