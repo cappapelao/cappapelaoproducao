@@ -1731,9 +1731,25 @@ function parseTxtCSV(text){
     let cur='',inQ=false;
     for(let ci=0;ci<line.length;ci++){
       const ch=line[ci];
-      if(ch==='"'){inQ=!inQ;}
-      else if(ch===';'&&!inQ){fields.push(cur);cur='';}
-      else{cur+=ch;}
+      if(inQ){
+        // dentro de um campo entre aspas: só sai do modo aspas com outra aspas
+        // (aspas duplicada "" vira uma aspas literal, ex: aspas escapada)
+        if(ch==='"'){
+          if(line[ci+1]==='"'){ cur+='"'; ci++; }
+          else { inQ=false; }
+        } else { cur+=ch; }
+      } else {
+        if(ch==='"' && cur===''){
+          // só entra em modo aspas se a aspas for o 1º caractere do campo
+          // (assim uma aspas "solta" no meio do texto, ex: medida em polegadas
+          // como 12", não quebra a separação das colunas seguintes)
+          inQ=true;
+        } else if(ch===';'){
+          fields.push(cur); cur='';
+        } else {
+          cur+=ch;
+        }
+      }
     }
     fields.push(cur);
     if(fields.length<15) continue;
@@ -1747,6 +1763,17 @@ function parseTxtCSV(text){
     // horas produzidas (coluna 4): decimal com vírgula
     const horasRaw=(fields[3]||'').trim();
     const horasNum=horasRaw ? parseFloat(horasRaw.replace(',','.')) : 0;
+    // "Processo" tem duas colunas próximas: descrição (texto, ex: CALANDRA) e
+    // código (número, ex: 007). Detecta automaticamente qual é qual — não depende
+    // da ordem exata no arquivo, evita mostrar código onde deveria ser texto.
+    const procCand1=(fields[7]||'').trim();
+    const procCand2=(fields[8]||'').trim();
+    const proc = /^\d+$/.test(procCand1) ? procCand2 : procCand1;
+    // "Produto" também pode variar de posição (código do produto é só números,
+    // capacidade também é número) — pega o primeiro candidato nessa região que
+    // realmente tem letras, que só pode ser o nome/descrição do produto.
+    const prodCands=[fields[9],fields[10],fields[11]].map(v=>(v||'').trim());
+    const produto = prodCands.find(v=>/[A-Za-zÀ-ÿ]/.test(v)) || prodCands[1] || '';
     result.push({
       date:dt,
       kg,
@@ -1754,9 +1781,9 @@ function parseTxtCSV(text){
       horas: isNaN(horasNum) ? 0 : horasNum,
       horaIni: (fields[1]||'').trim(),
       horaFim: (fields[2]||'').trim(),
-      proc:fields[7].trim(),
+      proc,
       maq:fields[13].trim(),
-      produto:fields[10].trim()
+      produto
     });
   }
   return result;
@@ -2324,9 +2351,23 @@ function renderProdutoAnalise(){
   const cAno    = document.getElementById('p-ano')     ? document.getElementById('p-ano').value     : loadFilter('produto','ano');
   const cMes    = document.getElementById('p-mes')     ? document.getElementById('p-mes').value     : loadFilter('produto','mes');
   const cMetric = document.getElementById('p-metric')  ? document.getElementById('p-metric').value  : (loadFilter('produto','metric')||'kg');
+  const cProc   = document.getElementById('p-proc')    ? document.getElementById('p-proc').value    : loadFilter('produto','proc');
+  const cMaq    = document.getElementById('p-maq')     ? document.getElementById('p-maq').value     : loadFilter('produto','maq');
 
   const allProdutos = [...new Set(rawData.map(r=>r.produto).filter(Boolean))].sort();
   const cProdValid = allProdutos.includes(cProd) ? cProd : '';
+
+  // Processo: opções restritas ao que existe para o produto selecionado (se houver)
+  const procSource = cProdValid ? rawData.filter(r=>r.produto===cProdValid) : rawData;
+  const allProcessos = [...new Set(procSource.map(r=>r.proc).filter(Boolean))].sort();
+  const cProcValid = allProcessos.includes(cProc) ? cProc : '';
+
+  // Máquina: se existe vínculo cadastrado (tela Vínculos) para o processo selecionado,
+  // usa exatamente essa lista; senão, detecta pelos dados (produto + processo)
+  const vinculoMaqsP = (cProcValid && vinculos[cProcValid] && vinculos[cProcValid].length) ? vinculos[cProcValid].slice().sort() : null;
+  const maqSourceP = cProcValid ? procSource.filter(r=>r.proc===cProcValid) : procSource;
+  const allMaquinasP = vinculoMaqsP || [...new Set(maqSourceP.map(r=>r.maq).filter(Boolean))].sort();
+  const cMaqValid = allMaquinasP.includes(cMaq) ? cMaq : '';
 
   const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
   const anoChart = cAno || anosDisp[anosDisp.length-1] || '';
@@ -2335,8 +2376,13 @@ function renderProdutoAnalise(){
   const metricLabel = cMetric==='folhas' ? 'Folhas' : 'Kg';
   const fmtMetric = cMetric==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
 
-  // dados do produto no ano (para descobrir qual mês tem dados por padrão)
-  const dadosProdAno = cProdValid ? rawData.filter(r=>r.produto===cProdValid && r.date.startsWith(anoChart)) : [];
+  // dados do produto no ano, já com processo/máquina aplicados (para descobrir qual mês tem dados por padrão)
+  const dadosProdAno = cProdValid ? rawData.filter(r=>
+    r.produto===cProdValid &&
+    r.date.startsWith(anoChart) &&
+    (!cProcValid || r.proc===cProcValid) &&
+    (!cMaqValid || r.maq===cMaqValid)
+  ) : [];
   const mesesComDados = [...new Set(dadosProdAno.map(r=>parseInt(r.date.substring(5,7))))].sort((a,b)=>a-b);
   const mesChart = parseInt(cMes) || mesesComDados[mesesComDados.length-1] || (new Date()).getMonth()+1;
 
@@ -2344,10 +2390,14 @@ function renderProdutoAnalise(){
   saveFilter('produto','ano',anoChart);
   saveFilter('produto','mes',String(mesChart));
   saveFilter('produto','metric',cMetric);
+  saveFilter('produto','proc',cProcValid);
+  saveFilter('produto','maq',cMaqValid);
 
   const prodOpts = '<option value="">Selecione um produto</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?' selected':''}>${p}</option>`).join('');
   const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===anoChart?' selected':''}>${a}</option>`).join('');
   const mesOpts  = MESES_FULL.map((m,i)=>`<option value="${i+1}"${(i+1)===mesChart?' selected':''}>${m}</option>`).join('');
+  const procOpts = '<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${encodeHtml(p)}"${p===cProcValid?' selected':''}>${p}</option>`).join('');
+  const maqOptsP  = '<option value="">Todas as máquinas</option>'+allMaquinasP.map(m=>`<option value="${encodeHtml(m)}"${m===cMaqValid?' selected':''}>${m}</option>`).join('');
 
   let bodyHtml;
   if(!cProdValid){
@@ -2411,6 +2461,10 @@ function renderProdutoAnalise(){
         <select id="p-ano" onchange="renderProdutoAnalise()">${anoOpts}</select></div>
       <div class="filter-group"><label>Mês</label>
         <select id="p-mes" onchange="renderProdutoAnalise()">${mesOpts}</select></div>
+      <div class="filter-group"><label>Processo</label>
+        <select id="p-proc" onchange="renderProdutoAnalise()">${procOpts}</select></div>
+      <div class="filter-group"><label>Máquina</label>
+        <select id="p-maq" onchange="renderProdutoAnalise()">${maqOptsP}</select></div>
       <div class="filter-group">
         <label>Ver por</label>
         <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
@@ -2425,7 +2479,7 @@ function renderProdutoAnalise(){
         </select>
       </div>
     </div>
-    <div class="section-title">Análise por Produto — ${cProdValid?encodeHtml(cProdValid):'—'} — ${MESES_FULL[mesChart-1]}/${anoChart}</div>
+    <div class="section-title">Análise por Produto — ${cProdValid?encodeHtml(cProdValid):'—'} — ${MESES_FULL[mesChart-1]}/${anoChart}${cProcValid?` — ${encodeHtml(cProcValid)}`:''}${cMaqValid?` — ${encodeHtml(cMaqValid)}`:''}</div>
     ${bodyHtml}
   `;
 }
