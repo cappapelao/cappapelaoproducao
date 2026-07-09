@@ -489,6 +489,7 @@ td.sem-prod{color:var(--text3);}
       <table id="dados-table" style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 14px;text-align:center;white-space:nowrap;color:var(--text2);font-weight:600" title="Desmarque para excluir o registro dos gráficos, cards e tabelas de análise">Usar?</th>
             <th onclick="sortDados('date')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Data <span id="sort-date"></span></th>
             <th onclick="sortDados('proc')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Processo <span id="sort-proc"></span></th>
             <th onclick="sortDados('maq')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Máquina <span id="sort-maq"></span></th>
@@ -1016,12 +1017,25 @@ async function buscarDoServidor(){
     const todos = [];
     const GRUPO = 3; // requisições simultâneas por rodada
 
+    // Verifica se a coluna "ignorar" (marcação de registro duvidoso) já existe —
+    // permite que o app continue funcionando normalmente mesmo sem a migração aplicada.
+    try{
+      await sbFetch('producao_admin', 'select=id,ignorar&limit=1');
+      ignorarDisponivel = true;
+    }catch(e){
+      ignorarDisponivel = false;
+      console.warn('Coluna "ignorar"/"id" indisponível em producao_admin — marcação de duvidosos desativada até a migração SQL ser aplicada.');
+    }
+    const camposSelect = ignorarDisponivel
+      ? 'id,data,kg,processo,maquina,produto,folhas,horas,hora_inicio,hora_fim,ignorar'
+      : 'data,kg,processo,maquina,produto,folhas,horas,hora_inicio,hora_fim';
+
     for(let i = 0; i < numLotes; i += GRUPO){
       const grupo = [];
       for(let j = i; j < Math.min(i + GRUPO, numLotes); j++){
         grupo.push(
           sbFetch('producao_admin',
-            `select=data,kg,processo,maquina,produto,folhas,horas,hora_inicio,hora_fim&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
+            `select=${camposSelect}&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
         );
       }
       const resultados = await Promise.all(grupo);
@@ -1037,6 +1051,7 @@ async function buscarDoServidor(){
       const folhasNum = parseFloat(String(r.folhas || '0').replace(',', '.'));
       const horasNum = parseFloat(String(r.horas || '0').replace(',', '.'));
       return {
+        id:      (r.id!=null ? r.id : null),
         date:    dataStr,
         kg:      isNaN(kgNum) ? 0 : kgNum,
         folhas:  isNaN(folhasNum) ? 0 : folhasNum,
@@ -1045,11 +1060,13 @@ async function buscarDoServidor(){
         horaFim: r.hora_fim || '',
         proc:    r.processo || '',
         maq:     r.maquina  || '',
-        produto: r.produto   || ''
+        produto: r.produto   || '',
+        ignorar: !!r.ignorar
       };
     }).filter(r => r.date.length === 10);
 
-    rawData = normalizado;
+    rawDataTodos = normalizado;
+    rawData = normalizado.filter(r => !r.ignorar);
     salvarDadosLocais();
 
     console.log(`Supabase: ${todos.length} brutos → ${rawData.length} carregados`);
@@ -1413,19 +1430,13 @@ async function importarTxtParaSupabase(file){
   // 6. Registra data/hora, arquivo e usuário no Supabase (visível em qualquer computador)
   await registrarUltimoEnvio(file.name, enviados);
 
-  // 7. Recarrega dados e atualiza UI
+  // 7. Rebusca do Supabase para obter os IDs reais dos registros recém-gravados
+  // (necessário para a marcação de registros duvidosos na tela Dados).
+  statusEl.textContent = '🔄 Recarregando dados atualizados...';
+  await buscarDoServidor();
   btn.disabled = false;
 
-  // Usa os dados locais diretamente — não rebusca do Supabase para evitar
-  // que um sincronizador externo sobrescreva os dados antes da tela atualizar.
-  // Registros protegidos pela data de corte (já existentes, intocados no Supabase)
-  // são preservados e mesclados com os recém-importados.
-  const protegidosLocais = dataCorte ? rawData.filter(r => r.date <= dataCorte) : [];
-  rawData = protegidosLocais.concat(dados);
-  salvarDadosLocais();
-  popularFiltros();
-
-  // Atualiza UI com os dados importados
+  // Atualiza UI com o nome do arquivo recém-importado
   const anosImp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
   document.getElementById('file-name').textContent = `☁️ ${file.name}`;
   document.getElementById('file-stats').textContent = `${rawData.length.toLocaleString('pt-BR')} registros · ${anosImp.join(', ')}${dataCorte ? ' · 🔒 protegido até '+fmtDate(dataCorte) : ''}`;
@@ -1475,9 +1486,9 @@ let _dadosSort = { col: 'date', dir: 1 };
 const DADOS_POR_PAG = 100;
 
 function initDados(){
-  // Popula filtros
-  const procs = [...new Set(rawData.map(r=>r.proc).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r=>r.date.substring(0,7)))].sort();
+  // Popula filtros (usa TODOS os registros, inclusive os marcados como duvidosos)
+  const procs = [...new Set(rawDataTodos.map(r=>r.proc).filter(Boolean))].sort();
+  const meses = [...new Set(rawDataTodos.map(r=>r.date.substring(0,7)))].sort();
   const procSel = document.getElementById('dados-proc');
   const mesSel  = document.getElementById('dados-mes');
   const procVal = procSel.value;
@@ -1500,7 +1511,7 @@ function getDadosFiltrados(){
   const busca  = (document.getElementById('dados-search')?.value||'').toLowerCase().trim();
   const proc   = document.getElementById('dados-proc')?.value||'';
   const mes    = document.getElementById('dados-mes')?.value||'';
-  let list = rawData;
+  let list = rawDataTodos;
   if(proc) list = list.filter(r=>r.proc===proc);
   if(mes)  list = list.filter(r=>r.date.startsWith(mes));
   if(busca) list = list.filter(r=>
@@ -1519,7 +1530,7 @@ function getDadosFiltrados(){
 }
 
 function renderDados(){
-  if(rawData.length===0) return;
+  if(rawDataTodos.length===0) return;
   const lista = getDadosFiltrados();
   const total = lista.length;
   const totalPags = Math.max(1, Math.ceil(total/DADOS_POR_PAG));
@@ -1537,7 +1548,12 @@ function renderDados(){
   const tbody = document.getElementById('dados-tbody');
   if(!tbody) return;
   tbody.innerHTML = pagina.map((r,i)=>`
-    <tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,.02)'}">
+    <tr style="border-bottom:1px solid var(--border);${r.ignorar?'opacity:.45;':''}${i%2===0?'':'background:rgba(255,255,255,.02)'}">
+      <td style="padding:9px 14px;text-align:center" title="${r.ignorar?'Duvidoso — fora dos cálculos':'Usado nos cálculos'}">
+        <input type="checkbox" ${r.ignorar?'':'checked'}
+          ${(!ignorarDisponivel||r.id==null)?'disabled':''}
+          onchange="toggleIgnorarRegistro(${r.id!=null?r.id:'null'}, !this.checked)"/>
+      </td>
       <td style="padding:9px 14px;white-space:nowrap">${r.date ? new Date(r.date+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
       <td style="padding:9px 14px">${r.proc||'—'}</td>
       <td style="padding:9px 14px">${r.maq||'—'}</td>
@@ -1545,8 +1561,11 @@ function renderDados(){
       <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${r.kg!=null?r.kg.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}</td>
     </tr>`).join('');
 
+  const totalIgnorados = rawDataTodos.filter(r=>r.ignorar).length;
   document.getElementById('dados-count').textContent =
-    `${total.toLocaleString('pt-BR')} registros${lista.length<rawData.length?' (filtrados de '+rawData.length.toLocaleString('pt-BR')+')':''}`;
+    `${total.toLocaleString('pt-BR')} registros${lista.length<rawDataTodos.length?' (filtrados de '+rawDataTodos.length.toLocaleString('pt-BR')+')':''}` +
+    (totalIgnorados>0 ? ` · 🚫 ${totalIgnorados.toLocaleString('pt-BR')} marcado(s) como duvidoso (fora dos cálculos)` : '') +
+    (!ignorarDisponivel ? ' · ⚠️ marcação de duvidosos indisponível (rode a migração SQL)' : '');
   document.getElementById('dados-pag-info').textContent =
     `Página ${_dadosPag} de ${totalPags} — ${inicio+1}–${Math.min(inicio+DADOS_POR_PAG,total)} de ${total.toLocaleString('pt-BR')}`;
 
@@ -1562,6 +1581,41 @@ function renderDados(){
   if(next)  next.disabled  = _dadosPag >= totalPags;
   if(first) first.disabled = _dadosPag <= 1;
   if(last)  last.disabled  = _dadosPag >= totalPags;
+}
+
+// Marca/desmarca um registro como "duvidoso": ele continua aparecendo aqui em
+// Dados, mas some dos gráficos, cards e tabelas de análise (rawData filtrado).
+async function toggleIgnorarRegistro(id, novoValor){
+  if(_filterUser !== 'admin'){ toast('Apenas o admin pode marcar registros como duvidosos.','error'); return; }
+  if(id==null){ toast('Atualize a página (↻ Atualizar dados) para poder marcar este registro.','error'); return; }
+
+  const rec = rawDataTodos.find(r=>r.id===id);
+  if(!rec) return;
+
+  // Atualização otimista na tela
+  rec.ignorar = novoValor;
+  rawData = rawDataTodos.filter(r=>!r.ignorar);
+  salvarDadosLocais();
+  renderDados();
+  renderTable();
+
+  try{
+    const r = await fetch(`${SB_URL}/producao_admin?id=eq.${id}`,{
+      method:'PATCH',
+      headers:{...SB_HEADERS,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body: JSON.stringify({ ignorar: novoValor })
+    });
+    if(!r.ok) throw new Error(await r.text());
+    toast(novoValor ? 'Registro marcado como duvidoso — removido dos cálculos.' : 'Registro reativado nos cálculos.', 'success');
+  }catch(e){
+    // Reverte em caso de falha ao gravar no Supabase
+    rec.ignorar = !novoValor;
+    rawData = rawDataTodos.filter(r=>!r.ignorar);
+    salvarDadosLocais();
+    renderDados();
+    renderTable();
+    toast('Erro ao salvar no Supabase: '+e.message,'error');
+  }
 }
 
 function sortDados(col){
@@ -1594,13 +1648,14 @@ function irUltimaPagDados(){
 
 function exportarDadosCSV(){
   const lista = getDadosFiltrados();
-  const header = 'Data;Processo;Máquina;Produto;KG';
+  const header = 'Data;Processo;Máquina;Produto;KG;Usado nos cálculos';
   const linhas = lista.map(r=>[
     r.date ? new Date(r.date+'T00:00:00').toLocaleDateString('pt-BR') : '',
     r.proc||'',
     r.maq||'',
     `"${(r.produto||'').replace(/"/g,'""')}"`,
-    (r.kg??'').toString().replace('.',',')
+    (r.kg??'').toString().replace('.',','),
+    r.ignorar ? 'Não (duvidoso)' : 'Sim'
   ].join(';'));
   const csv = '\uFEFF'+header+'\n'+linhas.join('\n');
   const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
@@ -1830,24 +1885,29 @@ function toggleMenu(){
 }
 
 // ===== DATA =====
-let rawData=[];
+let rawData=[];        // registros ATIVOS (excluindo os marcados como duvidosos) — usado em gráficos, cards, tabelas de análise
+let rawDataTodos=[];    // TODOS os registros (incluindo duvidosos) — usado só na tela "Dados"
 let metas={};
 let vinculos={}; // { PROCESSO: ['Máquina 1','Máquina 2', ...] }
 let allProcessos=[];
 let dataCorte=null; // 'YYYY-MM-DD' — dados com data <= dataCorte não são substituídos/excluídos numa nova importação
+let ignorarDisponivel=true; // false se a coluna "ignorar"/"id" ainda não existir em producao_admin (migração pendente)
 
 // ===== PERSISTÊNCIA LOCAL DOS DADOS =====
 function salvarDadosLocais(){
   try{
-    localStorage.setItem('dash_rawData', JSON.stringify(rawData));
+    localStorage.setItem('dash_rawDataTodos', JSON.stringify(rawDataTodos));
     localStorage.setItem('dash_metas', JSON.stringify(metas));
   }catch(e){console.warn('Cache local cheio:',e);}
 }
 function carregarDadosLocais(){
   try{
-    const rd=localStorage.getItem('dash_rawData');
-    const mt=localStorage.getItem('dash_metas');
-    if(rd) rawData=JSON.parse(rd);
+    const rd = localStorage.getItem('dash_rawDataTodos') || localStorage.getItem('dash_rawData'); // compat com cache antigo
+    const mt = localStorage.getItem('dash_metas');
+    if(rd){
+      rawDataTodos = JSON.parse(rd).map(r=>({...r, ignorar: !!r.ignorar}));
+      rawData = rawDataTodos.filter(r=>!r.ignorar);
+    }
     if(mt) metas=JSON.parse(mt);
     return rawData.length>0;
   }catch(e){return false;}
