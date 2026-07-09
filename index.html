@@ -1035,7 +1035,10 @@ async function buscarDoServidor(){
       for(let j = i; j < Math.min(i + GRUPO, numLotes); j++){
         grupo.push(
           sbFetch('producao_admin',
-            `select=${camposSelect}&order=data.asc&limit=${TAM}&offset=${j * TAM}`)
+            // "id.asc" como critério de desempate: sem isso, quando muitas linhas têm a
+            // MESMA data, a ordem entre elas não é garantida e a paginação por
+            // limit/offset pode repetir ou pular registros de um lote para o outro.
+            `select=${camposSelect}&order=data.asc,id.asc&limit=${TAM}&offset=${j * TAM}`)
         );
       }
       const resultados = await Promise.all(grupo);
@@ -1065,8 +1068,20 @@ async function buscarDoServidor(){
       };
     }).filter(r => r.date.length === 10);
 
-    rawDataTodos = normalizado;
-    rawData = normalizado.filter(r => !r.ignorar);
+    // Rede de segurança: remove duplicatas por id (pode sobrar alguma da paginação
+    // antiga/instável). Registros sem id (migração ainda não aplicada) são mantidos como estão.
+    const vistoId = new Set();
+    const semDuplicatas = [];
+    for(const r of normalizado){
+      if(r.id!=null){
+        if(vistoId.has(r.id)) continue;
+        vistoId.add(r.id);
+      }
+      semDuplicatas.push(r);
+    }
+
+    rawDataTodos = semDuplicatas;
+    rawData = semDuplicatas.filter(r => !r.ignorar);
     salvarDadosLocais();
 
     console.log(`Supabase: ${todos.length} brutos → ${rawData.length} carregados`);
