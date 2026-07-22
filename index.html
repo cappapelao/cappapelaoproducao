@@ -1292,7 +1292,11 @@ async function importarTxtParaSupabase(file){
 
   const visto = new Set();
   const dadosArquivo = parsed.filter(r => {
-    const ch = `${r.date}|${r.proc}|${r.maq}|${r.kg}`;
+    // Chave ampliada: além de data/processo/máquina/kg, inclui horário de início/fim
+    // e produto. Isso evita descartar lançamentos legítimos que apenas coincidem no
+    // peso (kg) — comum em processos como a folhadeira, que roda lotes padronizados
+    // várias vezes no mesmo dia. Só é considerado duplicata real se TUDO coincidir.
+    const ch = `${r.date}|${r.proc}|${r.maq}|${r.kg}|${r.horaIni}|${r.horaFim}|${r.produto}`;
     if(visto.has(ch)) return false;
     visto.add(ch); return true;
   });
