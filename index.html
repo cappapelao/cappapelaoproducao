@@ -206,6 +206,7 @@ td.sem-prod{color:var(--text3);}
       <button class="nav-tab" onclick="goPage('metas')">Metas</button>
       <button class="nav-tab" onclick="goPage('vinculos')">Vínculos</button>
       <button class="nav-tab" onclick="goPage('dados')">Dados</button>
+      <button class="nav-tab" onclick="goPage('consulta')">Consulta</button>
       <button class="nav-tab" onclick="goPage('usuarios')">Usuários</button>
       <button class="nav-tab" onclick="goPage('importar')">Importar</button>
     </div>
@@ -576,6 +577,122 @@ td.sem-prod{color:var(--text3);}
         <button onclick="mudaPagDados(1)" id="btn-dados-next" title="Próxima página"
           style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">→</button>
         <button onclick="irUltimaPagDados()" id="btn-dados-last" title="Última página"
+          style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">→|</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONSULTA (todos os campos + filtros de data + ranking de produtos) -->
+  <div class="page" id="page-consulta">
+    <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <div>
+        <h2 style="margin:0;font-size:18px">Consulta de Registros</h2>
+        <p id="consulta-count" style="margin:4px 0 0;font-size:13px;color:var(--text3)">Carregando...</p>
+      </div>
+      <button onclick="exportarConsultaCSV()"
+        style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">
+        ⬇ Exportar CSV
+      </button>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>Ano</label>
+        <select id="consulta-ano" onchange="renderConsulta()"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Mês</label>
+        <select id="consulta-mes" onchange="renderConsulta()">
+          <option value="">Todos</option>
+          <option value="1">Janeiro</option><option value="2">Fevereiro</option>
+          <option value="3">Março</option><option value="4">Abril</option>
+          <option value="5">Maio</option><option value="6">Junho</option>
+          <option value="7">Julho</option><option value="8">Agosto</option>
+          <option value="9">Setembro</option><option value="10">Outubro</option>
+          <option value="11">Novembro</option><option value="12">Dezembro</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Dia</label>
+        <select id="consulta-dia" onchange="renderConsulta()"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>De</label>
+        <input type="date" id="consulta-data-ini" onchange="renderConsulta()"
+          style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px"/>
+      </div>
+      <div class="filter-group">
+        <label>Até</label>
+        <input type="date" id="consulta-data-fim" onchange="renderConsulta()"
+          style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px"/>
+      </div>
+      <div class="filter-group">
+        <label>Produto</label>
+        <select id="consulta-produto" onchange="renderConsulta()"><option value="">Todos os produtos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Processo</label>
+        <select id="consulta-proc" onchange="renderConsulta()"><option value="">Todos os processos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>&nbsp;</label>
+        <button type="button" onclick="limparFiltrosConsulta()"
+          style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">Limpar filtros</button>
+      </div>
+    </div>
+
+    <div class="section-title">Ranking de Produtos Mais Produzidos</div>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin-bottom:26px">
+      <table id="consulta-ranking-table" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--bg2);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 14px;text-align:left;white-space:nowrap;color:var(--text2);font-weight:600">#</th>
+            <th style="padding:10px 14px;text-align:left;white-space:nowrap;color:var(--text2);font-weight:600">Produto</th>
+            <th style="padding:10px 14px;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600">Kg</th>
+            <th style="padding:10px 14px;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600">Folhas</th>
+            <th style="padding:10px 14px;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600">Horas Apontadas</th>
+            <th style="padding:10px 14px;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600">Kg/Hora</th>
+            <th style="padding:10px 14px;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600">% do total (Kg)</th>
+          </tr>
+        </thead>
+        <tbody id="consulta-ranking-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Registros (todos os campos)</div>
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
+      <table id="consulta-table" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--bg2);border-bottom:1px solid var(--border)">
+            <th onclick="sortConsulta('date')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Data <span id="csort-date"></span></th>
+            <th onclick="sortConsulta('proc')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Processo <span id="csort-proc"></span></th>
+            <th onclick="sortConsulta('maq')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Máquina <span id="csort-maq"></span></th>
+            <th onclick="sortConsulta('produto')" style="padding:10px 14px;text-align:left;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Produto <span id="csort-produto"></span></th>
+            <th onclick="sortConsulta('kg')" style="padding:10px 14px;text-align:right;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Kg <span id="csort-kg"></span></th>
+            <th onclick="sortConsulta('folhas')" style="padding:10px 14px;text-align:right;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Folhas <span id="csort-folhas"></span></th>
+            <th onclick="sortConsulta('horas')" style="padding:10px 14px;text-align:right;cursor:pointer;white-space:nowrap;color:var(--text2);font-weight:600">Horas <span id="csort-horas"></span></th>
+            <th style="padding:10px 14px;text-align:center;white-space:nowrap;color:var(--text2);font-weight:600">Hora Início</th>
+            <th style="padding:10px 14px;text-align:center;white-space:nowrap;color:var(--text2);font-weight:600">Hora Fim</th>
+          </tr>
+        </thead>
+        <tbody id="consulta-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Paginação -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;flex-wrap:wrap;gap:8px">
+      <span id="consulta-pag-info" style="font-size:13px;color:var(--text3)"></span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="irPagConsulta(1)" id="btn-consulta-first" title="Primeira página"
+          style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">|←</button>
+        <button onclick="mudaPagConsulta(-1)" id="btn-consulta-prev" title="Página anterior"
+          style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">←</button>
+        <input id="consulta-pag-input" type="number" min="1" value="1"
+          onchange="irPagConsulta(parseInt(this.value)||1)"
+          style="width:60px;padding:6px 8px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:13px;text-align:center"/>
+        <button onclick="mudaPagConsulta(1)" id="btn-consulta-next" title="Próxima página"
+          style="padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">→</button>
+        <button onclick="irUltimaPagConsulta()" id="btn-consulta-last" title="Última página"
           style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">→|</button>
       </div>
     </div>
@@ -1746,6 +1863,235 @@ function exportarDadosCSV(){
   URL.revokeObjectURL(url);
 }
 
+// ===== CONSULTA (todos os campos + filtros de mês/ano/dia/período + ranking de produtos) =====
+let _consultaPag = 1;
+let _consultaSort = { col: 'date', dir: 1 };
+const CONSULTA_POR_PAG = 100;
+
+function initConsulta(){
+  if(rawData.length===0) return;
+
+  const anos = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const anoSel = document.getElementById('consulta-ano');
+  anoSel.innerHTML = '<option value="">Todos</option>' +
+    anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  anoSel.value = loadFilter('consulta','ano')||'';
+
+  const diaSel = document.getElementById('consulta-dia');
+  diaSel.innerHTML = '<option value="">Todos</option>' +
+    Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}">${d}</option>`).join('');
+  diaSel.value = loadFilter('consulta','dia')||'';
+
+  document.getElementById('consulta-mes').value = loadFilter('consulta','mes')||'';
+  document.getElementById('consulta-data-ini').value = loadFilter('consulta','dataIni')||'';
+  document.getElementById('consulta-data-fim').value = loadFilter('consulta','dataFim')||'';
+
+  const produtos = produtosOrdenadosPorProducao(rawData,'kg');
+  const produtoSel = document.getElementById('consulta-produto');
+  produtoSel.innerHTML = '<option value="">Todos os produtos</option>' +
+    produtos.map(p=>`<option value="${p.replace(/"/g,'&quot;')}">${p}</option>`).join('');
+  produtoSel.value = loadFilter('consulta','produto')||'';
+
+  const procSel = document.getElementById('consulta-proc');
+  procSel.innerHTML = '<option value="">Todos os processos</option>' +
+    allProcessos.map(p=>`<option value="${p.replace(/"/g,'&quot;')}">${p}</option>`).join('');
+  procSel.value = loadFilter('consulta','proc')||'';
+
+  _consultaPag = 1;
+  renderConsulta();
+}
+
+function limparFiltrosConsulta(){
+  document.getElementById('consulta-ano').value='';
+  document.getElementById('consulta-mes').value='';
+  document.getElementById('consulta-dia').value='';
+  document.getElementById('consulta-data-ini').value='';
+  document.getElementById('consulta-data-fim').value='';
+  document.getElementById('consulta-produto').value='';
+  document.getElementById('consulta-proc').value='';
+  _consultaPag=1;
+  renderConsulta();
+}
+
+function getConsultaFiltrados(){
+  const ano      = document.getElementById('consulta-ano')?.value||'';
+  const mes      = document.getElementById('consulta-mes')?.value||'';
+  const dia      = document.getElementById('consulta-dia')?.value||'';
+  const dataIni  = document.getElementById('consulta-data-ini')?.value||'';
+  const dataFim  = document.getElementById('consulta-data-fim')?.value||'';
+  const produto  = document.getElementById('consulta-produto')?.value||'';
+  const proc     = document.getElementById('consulta-proc')?.value||'';
+
+  let list = rawData.filter(r=>{
+    if(ano && !r.date.startsWith(ano)) return false;
+    if(mes && parseInt(r.date.substring(5,7))!==parseInt(mes)) return false;
+    if(dia && parseInt(r.date.substring(8,10))!==parseInt(dia)) return false;
+    if(dataIni && r.date<dataIni) return false;
+    if(dataFim && r.date>dataFim) return false;
+    if(produto && r.produto!==produto) return false;
+    if(proc && r.proc!==proc) return false;
+    return true;
+  });
+
+  const col = _consultaSort.col, dir = _consultaSort.dir;
+  list = [...list].sort((a,b)=>{
+    const va=a[col]??'', vb=b[col]??'';
+    if(col==='kg'||col==='folhas'||col==='horas') return ((va||0)-(vb||0))*dir;
+    return String(va).localeCompare(String(vb),'pt-BR')*dir;
+  });
+  return list;
+}
+
+// tabela de ranking: soma Kg/Folhas/Horas por produto (e calcula Kg/Hora), ordenada do mais para o menos produzido
+function renderRankingProdutos(lista){
+  const tbody = document.getElementById('consulta-ranking-tbody');
+  if(!tbody) return;
+
+  const soma = {};
+  lista.forEach(r=>{
+    if(!r.produto) return;
+    if(!soma[r.produto]) soma[r.produto]={kg:0,folhas:0,horas:0};
+    soma[r.produto].kg += r.kg||0;
+    soma[r.produto].folhas += r.folhas||0;
+    soma[r.produto].horas += r.horas||0;
+  });
+
+  const totalKg = Object.values(soma).reduce((s,o)=>s+o.kg,0);
+  const ranking = Object.entries(soma)
+    .map(([produto,o])=>({produto,...o, kgHora: o.horas>0 ? o.kg/o.horas : 0}))
+    .sort((a,b)=>b.kg-a.kg);
+
+  if(ranking.length===0){
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--text3)">Nenhum produto no período/filtro selecionado.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = ranking.map((r,i)=>`
+    <tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,.02)'}">
+      <td style="padding:9px 14px;font-weight:700;color:${i<3?'var(--accent)':'var(--text2)'}">${i+1}º</td>
+      <td style="padding:9px 14px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.produto||'').replace(/"/g,'&quot;')}">${r.produto}</td>
+      <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.kg)}</td>
+      <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.folhas)}</td>
+      <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.horas)}</td>
+      <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${r.horas>0?fmtKg(r.kgHora):'—'}</td>
+      <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${totalKg>0?fmtKg(r.kg/totalKg*100)+'%':'—'}</td>
+    </tr>`).join('');
+}
+
+function renderConsulta(){
+  if(rawData.length===0) return;
+
+  saveFilter('consulta','ano',document.getElementById('consulta-ano').value);
+  saveFilter('consulta','mes',document.getElementById('consulta-mes').value);
+  saveFilter('consulta','dia',document.getElementById('consulta-dia').value);
+  saveFilter('consulta','dataIni',document.getElementById('consulta-data-ini').value);
+  saveFilter('consulta','dataFim',document.getElementById('consulta-data-fim').value);
+  saveFilter('consulta','produto',document.getElementById('consulta-produto').value);
+  saveFilter('consulta','proc',document.getElementById('consulta-proc').value);
+
+  const lista = getConsultaFiltrados();
+  renderRankingProdutos(lista);
+
+  const total = lista.length;
+  const totalPags = Math.max(1, Math.ceil(total/CONSULTA_POR_PAG));
+  if(_consultaPag > totalPags) _consultaPag = totalPags;
+  if(_consultaPag < 1) _consultaPag = 1;
+  const inicio = (_consultaPag-1)*CONSULTA_POR_PAG;
+  const pagina = lista.slice(inicio, inicio+CONSULTA_POR_PAG);
+
+  ['date','proc','maq','produto','kg','folhas','horas'].forEach(c=>{
+    const el = document.getElementById('csort-'+c);
+    if(el) el.textContent = _consultaSort.col===c ? (_consultaSort.dir===1?'↑':'↓') : '';
+  });
+
+  const tbody = document.getElementById('consulta-tbody');
+  if(tbody){
+    tbody.innerHTML = pagina.map((r,i)=>`
+      <tr style="border-bottom:1px solid var(--border);${i%2===0?'':'background:rgba(255,255,255,.02)'}">
+        <td style="padding:9px 14px;white-space:nowrap">${r.date ? new Date(r.date+'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+        <td style="padding:9px 14px">${r.proc||'—'}</td>
+        <td style="padding:9px 14px">${r.maq||'—'}</td>
+        <td style="padding:9px 14px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.produto||'').replace(/"/g,'&quot;')}">${r.produto||'—'}</td>
+        <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.kg)}</td>
+        <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.folhas)}</td>
+        <td style="padding:9px 14px;text-align:right;font-variant-numeric:tabular-nums">${fmtKg(r.horas)}</td>
+        <td style="padding:9px 14px;text-align:center;white-space:nowrap">${r.horaIni||'—'}</td>
+        <td style="padding:9px 14px;text-align:center;white-space:nowrap">${r.horaFim||'—'}</td>
+      </tr>`).join('');
+  }
+
+  document.getElementById('consulta-count').textContent = total>0
+    ? `${total.toLocaleString('pt-BR')} registro(s)${total<rawData.length?' (filtrados de '+rawData.length.toLocaleString('pt-BR')+')':''}`
+    : 'Nenhum registro encontrado para o filtro selecionado.';
+  document.getElementById('consulta-pag-info').textContent = total>0
+    ? `Página ${_consultaPag} de ${totalPags} — ${inicio+1}–${Math.min(inicio+CONSULTA_POR_PAG,total)} de ${total.toLocaleString('pt-BR')}`
+    : '';
+
+  const inp = document.getElementById('consulta-pag-input');
+  if(inp){ inp.value = _consultaPag; inp.max = totalPags; }
+
+  const prev = document.getElementById('btn-consulta-prev');
+  const next = document.getElementById('btn-consulta-next');
+  const first = document.getElementById('btn-consulta-first');
+  const last = document.getElementById('btn-consulta-last');
+  if(prev)  prev.disabled  = _consultaPag <= 1;
+  if(next)  next.disabled  = _consultaPag >= totalPags;
+  if(first) first.disabled = _consultaPag <= 1;
+  if(last)  last.disabled  = _consultaPag >= totalPags;
+}
+
+function sortConsulta(col){
+  if(_consultaSort.col===col) _consultaSort.dir*=-1;
+  else { _consultaSort.col=col; _consultaSort.dir=1; }
+  _consultaPag=1;
+  renderConsulta();
+}
+
+function mudaPagConsulta(delta){
+  _consultaPag += delta;
+  renderConsulta();
+  document.getElementById('page-consulta').scrollTop=0;
+  window.scrollTo(0,0);
+}
+
+function irPagConsulta(pag){
+  const lista = getConsultaFiltrados();
+  const totalPags = Math.max(1, Math.ceil(lista.length/CONSULTA_POR_PAG));
+  _consultaPag = Math.max(1, Math.min(pag, totalPags));
+  renderConsulta();
+  window.scrollTo(0,0);
+}
+
+function irUltimaPagConsulta(){
+  const lista = getConsultaFiltrados();
+  const totalPags = Math.max(1, Math.ceil(lista.length/CONSULTA_POR_PAG));
+  _consultaPag = totalPags;
+  renderConsulta();
+  window.scrollTo(0,0);
+}
+
+function exportarConsultaCSV(){
+  const lista = getConsultaFiltrados();
+  const header = 'Data;Processo;Máquina;Produto;KG;Folhas;Horas;Hora Início;Hora Fim';
+  const linhas = lista.map(r=>[
+    r.date ? new Date(r.date+'T00:00:00').toLocaleDateString('pt-BR') : '',
+    r.proc||'',
+    r.maq||'',
+    `"${(r.produto||'').replace(/"/g,'""')}"`,
+    (r.kg??'').toString().replace('.',','),
+    (r.folhas??'').toString().replace('.',','),
+    (r.horas??'').toString().replace('.',','),
+    r.horaIni||'',
+    r.horaFim||''
+  ].join(';'));
+  const csv = '\uFEFF'+header+'\n'+linhas.join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='consulta_registros.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
 
 function renderQualidade(){
   if(rawData.length===0) return;
@@ -1938,33 +2284,41 @@ function renderHistograma(){
     return true;
   });
 
-  const valores = filtrado.map(r=>r[metricKey]||0).filter(v=>v>0);
+  const registros = filtrado
+    .map(r=>({valor:r[metricKey]||0, horas:r.horas||0}))
+    .filter(o=>o.valor>0 && o.horas>0);
 
-  if(valores.length===0){
-    document.getElementById('hist-cards').innerHTML='<div class="empty"><p>Nenhum dado para o período/filtro selecionado.</p></div>';
+  if(registros.length===0){
+    document.getElementById('hist-cards').innerHTML='<div class="empty"><p>Nenhum dado com horas apontadas para o período/filtro selecionado.</p></div>';
     const el=document.getElementById('hist-chart');
     if(el){ const ctx=el.getContext('2d'); ctx.clearRect(0,0,el.width,el.height); }
     return;
   }
 
-  const min=Math.min(...valores);
-  const max=Math.max(...valores);
-  const total=valores.reduce((s,v)=>s+v,0);
-  const media=total/valores.length;
+  // taxa de produção por hora de cada registro (o que define a faixa no eixo X)
+  const taxas = registros.map(o=>o.valor/o.horas);
+  const min=Math.min(...taxas);
+  const max=Math.max(...taxas);
+  const totalValor=registros.reduce((s,o)=>s+o.valor,0);
+  const totalHoras=registros.reduce((s,o)=>s+o.horas,0);
+  const mediaTaxa=totalHoras>0 ? totalValor/totalHoras : 0;
 
   // número de classes (regra de Sturges), limitado entre 5 e 15
-  let numBins = Math.ceil(Math.log2(valores.length)+1);
+  let numBins = Math.ceil(Math.log2(taxas.length)+1);
   numBins = Math.min(15, Math.max(5, numBins));
   const range = (max-min) || 1;
   const binSize = range/numBins;
 
-  const bins = Array.from({length:numBins},()=>0);
-  valores.forEach(v=>{
-    let idx = Math.floor((v-min)/binSize);
+  // por faixa de Kg/Hora, soma o total de horas dos registros que caem nela
+  const binHoras = Array.from({length:numBins},()=>0);
+  registros.forEach((o,i)=>{
+    let idx = Math.floor((taxas[i]-min)/binSize);
     if(idx>=numBins) idx=numBins-1;
     if(idx<0) idx=0;
-    bins[idx]++;
+    binHoras[idx]+=o.horas;
   });
+  // valor de cada barra = total de horas na faixa
+  const bins = binHoras;
 
   const labels = bins.map((_,i)=>{
     const inicio=min+i*binSize;
@@ -1974,23 +2328,23 @@ function renderHistograma(){
 
   document.getElementById('hist-cards').innerHTML=`
     <div class="cards-grid">
-      <div class="card blue"><span class="card-label">Registros</span><span class="card-value">${valores.length.toLocaleString('pt-BR')}</span><span class="card-sub">com ${metricLabel} &gt; 0</span></div>
-      <div class="card"><span class="card-label">Total</span><span class="card-value">${fmtKg(total)}</span><span class="card-sub">${metricLabel}</span></div>
-      <div class="card"><span class="card-label">Média</span><span class="card-value">${fmtKg(media)}</span><span class="card-sub">${metricLabel}/registro</span></div>
-      <div class="card"><span class="card-label">Mínimo</span><span class="card-value">${fmtKg(min)}</span><span class="card-sub">${metricLabel}</span></div>
-      <div class="card"><span class="card-label">Máximo</span><span class="card-value">${fmtKg(max)}</span><span class="card-sub">${metricLabel}</span></div>
+      <div class="card blue"><span class="card-label">Horas</span><span class="card-value">${fmtKg(totalHoras)}</span><span class="card-sub">total no período</span></div>
+      <div class="card"><span class="card-label">Total</span><span class="card-value">${fmtKg(totalValor)}</span><span class="card-sub">${metricLabel}</span></div>
+      <div class="card"><span class="card-label">Média</span><span class="card-value">${fmtKg(mediaTaxa)}</span><span class="card-sub">${metricLabel}/hora</span></div>
+      <div class="card"><span class="card-label">Mínimo</span><span class="card-value">${fmtKg(min)}</span><span class="card-sub">${metricLabel}/hora</span></div>
+      <div class="card"><span class="card-label">Máximo</span><span class="card-value">${fmtKg(max)}</span><span class="card-sub">${metricLabel}/hora</span></div>
     </div>`;
 
   const base={
     responsive:true,maintainAspectRatio:true,layout:{padding:{top:26}},
-    plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',callbacks:{label:ctx=>`${ctx.parsed.y} registro(s)`}}},
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',borderColor:'#30363d',borderWidth:1,titleColor:'#e6edf3',bodyColor:'#8b949e',callbacks:{label:ctx=>`${fmtKg(ctx.parsed.y)} hora(s)`}}},
     scales:{
-      x:{ticks:{color:'#8b949e',font:{size:11}},grid:{display:false},title:{display:true,text:`Faixa de ${metricLabel}`,color:'#8b949e'}},
-      y:{ticks:{color:'#8b949e',font:{size:11},precision:0},grid:{color:'#21262d'},title:{display:true,text:'Nº de registros',color:'#8b949e'}}
+      x:{ticks:{color:'#8b949e',font:{size:11}},grid:{display:false},title:{display:true,text:`Faixa de ${metricLabel}/Hora`,color:'#8b949e'}},
+      y:{ticks:{color:'#8b949e',font:{size:11}},grid:{color:'#21262d'},title:{display:true,text:'Nº de horas',color:'#8b949e'}}
     }
   };
 
-  // plugin que escreve o número de registros em cima de cada barra
+  // plugin que escreve o número de horas em cima de cada barra
   const histTopLabels={id:'histTopLabels',afterDatasetsDraw(chart){
     const {ctx}=chart;
     chart.data.datasets.forEach((ds,di)=>{
@@ -2002,7 +2356,7 @@ function renderHistograma(){
         ctx.font='bold 11px Segoe UI';
         ctx.textAlign='center';
         ctx.textBaseline='bottom';
-        ctx.fillText(val.toLocaleString('pt-BR'),bar.x,bar.y-4);
+        ctx.fillText(fmtKg(val),bar.x,bar.y-4);
         ctx.restore();
       });
     });
@@ -2010,7 +2364,7 @@ function renderHistograma(){
 
   const chart=new Chart(document.getElementById('hist-chart'),{
     type:'bar',
-    data:{labels, datasets:[{label:'Frequência',data:bins,
+    data:{labels, datasets:[{label:'Horas',data:bins,
       backgroundColor:ctx=>vGradient(ctx.chart.ctx,ctx.chart.chartArea,'#79c0ff','rgba(88,166,255,.15)'),
       borderColor:'#58a6ff',borderWidth:1,borderRadius:4,categoryPercentage:1.0,barPercentage:0.98}]},
     options:base,
@@ -2070,7 +2424,7 @@ function popularFiltros(){
 }
 
 // ===== NAV =====
-const PAGES=['dashboard','qualidade','global','graficos','histograma','produto','metas','vinculos','dados','usuarios','importar'];
+const PAGES=['dashboard','qualidade','global','graficos','histograma','produto','metas','vinculos','dados','consulta','usuarios','importar'];
 function goPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -2087,6 +2441,7 @@ function goPage(p){
   if(p==='metas') renderMetaList();
   if(p==='vinculos') renderVinculos();
   if(p==='dados') initDados();
+  if(p==='consulta') initConsulta();
   if(p==='usuarios') renderUsuarios();
 }
 function toggleMenu(){
@@ -3126,7 +3481,7 @@ function renderVinculos(){
 // ===== USUÁRIOS E PERMISSÕES =====
 const PAGE_LABELS={
   importar:'Importar', dashboard:'Dashboard', qualidade:'Qualidade', global:'Visão Global',
-  graficos:'Gráficos', produto:'Produto', metas:'Metas', vinculos:'Vínculos', dados:'Dados'
+  graficos:'Gráficos', produto:'Produto', metas:'Metas', vinculos:'Vínculos', dados:'Dados', consulta:'Consulta'
 };
 let usuariosCadastrados=[]; // [{username, senha, permissoes:[...]}]
 
