@@ -469,7 +469,9 @@ td.sem-prod{color:var(--text3);}
       <div id="g-cards" style="margin-bottom:20px"></div>
       <div class="section-title">Produção Mensal — Qualidade (Inspeção) vs Planejado</div>
       <div class="chart-box" style="margin-bottom:20px"><canvas id="g-chart-bar"></canvas></div>
-
+      <div style="text-align:right">
+        <button onclick="imprimirRelatorio('global')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
+      </div>
     </div>
   </div>
   <div class="page" id="page-graficos">
@@ -478,6 +480,9 @@ td.sem-prod{color:var(--text3);}
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
         <p>Importe um arquivo Excel para ver os gráficos</p>
       </div>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button onclick="imprimirRelatorio('graficos')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
     </div>
   </div>
 
@@ -538,6 +543,9 @@ td.sem-prod{color:var(--text3);}
       <div id="hist-cards" style="margin-bottom:20px"></div>
       <div class="section-title">Histograma de Distribuição</div>
       <div class="chart-box"><canvas id="hist-chart"></canvas></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="imprimirRelatorio('histograma')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
+      </div>
     </div>
   </div>
 
@@ -549,6 +557,9 @@ td.sem-prod{color:var(--text3);}
         <p>Importe um arquivo Excel para ver a análise por produto</p>
       </div>
     </div>
+    <div style="margin-top:16px;text-align:right">
+      <button onclick="imprimirRelatorio('produto')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
+    </div>
   </div>
 
   <!-- FICHA TÉCNICA -->
@@ -558,6 +569,9 @@ td.sem-prod{color:var(--text3);}
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
         <p>Importe um arquivo Excel para ver a ficha técnica do produto</p>
       </div>
+    </div>
+    <div style="margin-top:16px;text-align:right">
+      <button onclick="imprimirRelatorio('ficha')" style="padding:10px 20px;background:var(--accent2);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='var(--accent2)'">🖨️ Imprimir Relatório PDF</button>
     </div>
   </div>
 
@@ -630,10 +644,16 @@ td.sem-prod{color:var(--text3);}
         <h2 style="margin:0;font-size:18px">Consulta de Registros</h2>
         <p id="consulta-count" style="margin:4px 0 0;font-size:13px;color:var(--text3)">Carregando...</p>
       </div>
-      <button onclick="exportarConsultaCSV()"
-        style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">
-        ⬇ Exportar CSV
-      </button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="exportarConsultaCSV()"
+          style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">
+          ⬇ Exportar CSV
+        </button>
+        <button onclick="imprimirRelatorio('consulta')"
+          style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent2);color:#fff;font-size:13px;font-weight:600;cursor:pointer">
+          🖨️ Imprimir Relatório PDF
+        </button>
+      </div>
     </div>
 
     <div class="filters">
@@ -682,6 +702,7 @@ td.sem-prod{color:var(--text3);}
       </div>
     </div>
 
+    <div id="consulta-report">
     <div class="section-title">Ranking de Produtos Mais Produzidos</div>
     <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border);margin-bottom:26px">
       <table id="consulta-ranking-table" style="width:100%;border-collapse:collapse;font-size:13px">
@@ -698,6 +719,7 @@ td.sem-prod{color:var(--text3);}
         </thead>
         <tbody id="consulta-ranking-tbody"></tbody>
       </table>
+    </div>
     </div>
 
     <div class="section-title">Registros (todos os campos)</div>
@@ -1046,6 +1068,30 @@ async function doLogin(){
   }
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
+// Retorna o innerHTML de um container pronto para impressão:
+// remove a área de filtros interativos (.filters) e troca cada <canvas> por uma
+// imagem estática (snapshot via toDataURL), já que canvas copiado por innerHTML fica em branco.
+function conteudoParaImpressao(containerId){
+  const el=document.getElementById(containerId);
+  if(!el) return '';
+  const clone=el.cloneNode(true);
+  const filtrosClone=clone.querySelector('.filters');
+  if(filtrosClone) filtrosClone.remove();
+  const canvasOriginais=el.querySelectorAll('canvas');
+  const canvasClones=clone.querySelectorAll('canvas');
+  canvasOriginais.forEach((cv,i)=>{
+    const alvo=canvasClones[i];
+    if(!alvo) return;
+    try{
+      const img=document.createElement('img');
+      img.src=cv.toDataURL('image/png',1.0);
+      img.style.maxWidth='100%';
+      img.style.marginBottom='16px';
+      alvo.replaceWith(img);
+    }catch(e){ /* canvas vazio ou sem dados: ignora */ }
+  });
+  return clone.innerHTML;
+}
 function imprimirRelatorio(origem){
   const logoSrc=document.querySelector('.login-logo img')?.src||'';
   const dataEmissao=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -1057,6 +1103,24 @@ function imprimirRelatorio(origem){
     const mesLabel=mes?['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][parseInt(mes)-1]:'Todos os meses';
     titulo=`Qualidade (Inspeção) — ${mesLabel} ${ano}`;
     conteudo=document.getElementById('q-cards').innerHTML+document.getElementById('q-table').innerHTML;
+  } else if(origem==='produto'){
+    titulo='Análise por Produto';
+    conteudo=conteudoParaImpressao('produto-container');
+  } else if(origem==='ficha'){
+    titulo='Ficha Técnica de Produto';
+    conteudo=conteudoParaImpressao('ficha-container');
+  } else if(origem==='histograma'){
+    titulo='Histograma de Distribuição';
+    conteudo=conteudoParaImpressao('hist-content');
+  } else if(origem==='global'){
+    titulo='Visão Global da Produção';
+    conteudo=conteudoParaImpressao('g-content');
+  } else if(origem==='graficos'){
+    titulo='Gráficos de Produção';
+    conteudo=conteudoParaImpressao('charts-container');
+  } else if(origem==='consulta'){
+    titulo='Ranking de Produtos Mais Produzidos';
+    conteudo=conteudoParaImpressao('consulta-report');
   } else {
     const ano=document.getElementById('sel-ano').value;
     const mes=document.getElementById('sel-mes').value;
