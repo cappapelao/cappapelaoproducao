@@ -13,8 +13,14 @@
   --yellow:#d29922;--text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
   --radius:10px;--shadow:0 8px 32px rgba(0,0,0,.4);
 }
+:root[data-theme="light"]{
+  --bg:#f4f6f8;--bg2:#ffffff;--bg3:#eef1f5;--border:#d9dee4;
+  --accent:#1f6feb;--accent2:#1f6feb;--green:#1a7f37;--red:#cf222e;
+  --yellow:#9a6700;--text:#1b1f24;--text2:#57606a;--text3:#6e7781;
+  --radius:10px;--shadow:0 8px 32px rgba(0,0,0,.1);
+}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;transition:background .15s,color .15s;}
 
 /* LOGIN */
 #login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 60% 40%,#1f6feb22,transparent 60%),var(--bg);}
@@ -82,6 +88,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .filter-group label{font-size:12px;color:var(--text2);font-weight:500;}
 .filter-group select{padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;cursor:pointer;min-width:130px;}
 .filter-group select:focus{border-color:var(--accent);}
+
+/* COMBO (select com busca) */
+.combo{position:relative;min-width:220px;}
+.combo-input{width:100%;padding:8px 30px 8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;cursor:text;}
+.combo-input:focus{border-color:var(--accent);}
+.combo::after{content:'🔍';position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;pointer-events:none;opacity:.6;}
+.combo-dropdown{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:260px;overflow-y:auto;
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;z-index:60;box-shadow:var(--shadow);}
+.combo-item{padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.combo-item:hover,.combo-item.hl{background:var(--bg2);color:var(--accent);}
+.combo-empty{padding:8px 12px;font-size:13px;color:var(--text3);}
+
+/* THEME TOGGLE */
+.btn-theme{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;}
+.btn-theme:hover{border-color:var(--accent);color:var(--accent);}
+.btn-theme-icon{padding:6px 9px;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:15px;line-height:1;display:none;align-items:center;justify-content:center;}
 
 /* CARDS */
 .cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
@@ -168,7 +190,9 @@ td.sem-prod{color:var(--text3);}
   .card-value{font-size:18px;}
   .cards-grid{grid-template-columns:1fr 1fr;}
   .filter-group select{min-width:100px;}
+  .combo{min-width:0;}
   .import-hero{min-height:calc(100vh - 80px);padding:20px 0;}
+  .btn-theme-icon{display:flex;}
 }
 </style>
 </head>
@@ -203,6 +227,7 @@ td.sem-prod{color:var(--text3);}
       <button class="nav-tab" onclick="goPage('graficos')">Gráficos</button>
       <button class="nav-tab" onclick="goPage('histograma')">Histograma</button>
       <button class="nav-tab" onclick="goPage('produto')">Produto</button>
+      <button class="nav-tab" onclick="goPage('ficha')">Ficha Técnica</button>
       <button class="nav-tab" onclick="goPage('metas')">Metas</button>
       <button class="nav-tab" onclick="goPage('vinculos')">Vínculos</button>
       <button class="nav-tab" onclick="goPage('dados')">Dados</button>
@@ -212,6 +237,9 @@ td.sem-prod{color:var(--text3);}
     </div>
     <div class="sidebar-bottom">
       <span class="nav-user" id="nav-user"></span>
+      <button class="btn-theme" onclick="toggleTheme()">
+        <span class="theme-icon">🌙</span> <span class="theme-label">Tema claro</span>
+      </button>
       <button class="btn-logout" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -219,7 +247,10 @@ td.sem-prod{color:var(--text3);}
   <div class="main-content">
     <div class="mobile-topbar">
       <div class="mobile-topbar-brand">Dashboard de Produção</div>
-      <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn-theme-icon theme-icon" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙</button>
+        <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+      </div>
     </div>
 
   <!-- IMPORTAR -->
@@ -516,6 +547,16 @@ td.sem-prod{color:var(--text3);}
       <div class="empty">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
         <p>Importe um arquivo Excel para ver a análise por produto</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FICHA TÉCNICA -->
+  <div class="page" id="page-ficha">
+    <div id="ficha-container">
+      <div class="empty">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="30" width="8" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="20" y="18" width="8" height="24" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="34" y="8" width="8" height="34" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+        <p>Importe um arquivo Excel para ver a ficha técnica do produto</p>
       </div>
     </div>
   </div>
@@ -1303,6 +1344,7 @@ async function buscarDoServidor(){
       else if(idPag === 'page-graficos') renderCharts();
       else if(idPag === 'page-histograma') renderHistograma();
       else if(idPag === 'page-produto') renderProdutoAnalise();
+      else if(idPag === 'page-ficha') renderFichaTecnica();
     }
 
     const duplicatas = 0; // dedup removida
@@ -2424,7 +2466,7 @@ function popularFiltros(){
 }
 
 // ===== NAV =====
-const PAGES=['dashboard','qualidade','global','graficos','histograma','produto','metas','vinculos','dados','consulta','usuarios','importar'];
+const PAGES=['dashboard','qualidade','global','graficos','histograma','produto','ficha','metas','vinculos','dados','consulta','usuarios','importar'];
 function goPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -2438,6 +2480,7 @@ function goPage(p){
   if(p==='qualidade') renderQualidade();
   if(p==='global') renderGlobal();
   if(p==='produto') renderProdutoAnalise();
+  if(p==='ficha') renderFichaTecnica();
   if(p==='metas') renderMetaList();
   if(p==='vinculos') renderVinculos();
   if(p==='dados') initDados();
@@ -3215,6 +3258,7 @@ function renderCharts(){
 function encodeHtml(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ===== ANÁLISE POR PRODUTO =====
+const PROD_ALL='__TODOS__';
 function renderProdutoAnalise(){
   if(rawData.length===0) return;
 
@@ -3226,10 +3270,11 @@ function renderProdutoAnalise(){
   const cMaq    = document.getElementById('p-maq')     ? document.getElementById('p-maq').value     : loadFilter('produto','maq');
 
   const allProdutos = produtosOrdenadosPorProducao(rawData, cMetric);
-  const cProdValid = allProdutos.includes(cProd) ? cProd : '';
+  const cProdValid = (cProd===PROD_ALL || allProdutos.includes(cProd)) ? cProd : '';
+  const isAllProd = cProdValid===PROD_ALL;
 
-  // Processo: opções restritas ao que existe para o produto selecionado (se houver)
-  const procSource = cProdValid ? rawData.filter(r=>r.produto===cProdValid) : rawData;
+  // Processo: opções restritas ao que existe para o produto selecionado (se houver). "Todos" não filtra por produto.
+  const procSource = (cProdValid && !isAllProd) ? rawData.filter(r=>r.produto===cProdValid) : rawData;
   const allProcessos = [...new Set(procSource.map(r=>r.proc).filter(Boolean))].sort();
   const cProcValid = allProcessos.includes(cProc) ? cProc : '';
 
@@ -3247,9 +3292,9 @@ function renderProdutoAnalise(){
   const metricLabel = cMetric==='folhas' ? 'Folhas' : 'Kg';
   const fmtMetric = cMetric==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
 
-  // dados do produto no ano, já com processo/máquina aplicados (para descobrir qual mês tem dados por padrão)
+  // dados do produto (ou de todos os produtos) no ano, já com processo/máquina aplicados
   const dadosProdAno = cProdValid ? rawData.filter(r=>
-    r.produto===cProdValid &&
+    (isAllProd || r.produto===cProdValid) &&
     r.date.startsWith(anoChart) &&
     (!cProcValid || r.proc===cProcValid) &&
     (!cMaqValid || r.maq===cMaqValid)
@@ -3264,15 +3309,24 @@ function renderProdutoAnalise(){
   saveFilter('produto','proc',cProcValid);
   saveFilter('produto','maq',cMaqValid);
 
-  const prodOpts = '<option value="">Selecione um produto</option>'+allProdutos.map(p=>`<option value="${encodeHtml(p)}"${p===cProdValid?' selected':''}>${p}</option>`).join('');
+  const prodOptionsArr = [
+    {value:'', label:'Selecione um produto', selected: cProdValid===''},
+    {value: PROD_ALL, label:'— Todos os produtos —', selected: isAllProd},
+    ...allProdutos.map(p=>({value:p, label:p, selected:p===cProdValid}))
+  ];
+  const prodCombo = comboHtml('p-produto', prodOptionsArr, 'renderProdutoAnalise()', 'Buscar produto...', 240);
   const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===anoChart?' selected':''}>${a}</option>`).join('');
   const mesOpts  = MESES_FULL.map((m,i)=>`<option value="${i+1}"${(i+1)===mesChart?' selected':''}>${m}</option>`).join('');
   const procOpts = '<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${encodeHtml(p)}"${p===cProcValid?' selected':''}>${p}</option>`).join('');
-  const maqOptsP  = '<option value="">Todas as máquinas</option>'+allMaquinasP.map(m=>`<option value="${encodeHtml(m)}"${m===cMaqValid?' selected':''}>${m}</option>`).join('');
+  const maqOptionsArr = [
+    {value:'', label:'Todas as máquinas', selected: cMaqValid===''},
+    ...allMaquinasP.map(m=>({value:m, label:m, selected:m===cMaqValid}))
+  ];
+  const maqCombo = comboHtml('p-maq', maqOptionsArr, 'renderProdutoAnalise()', 'Buscar máquina...', 200);
 
   let bodyHtml;
   if(!cProdValid){
-    bodyHtml = `<div class="empty" style="margin-top:20px"><p>Selecione um produto para ver a análise diária.</p></div>`;
+    bodyHtml = `<div class="empty" style="margin-top:20px"><p>Selecione um produto (ou "Todos os produtos") para ver a análise diária.</p></div>`;
   } else {
     const diasDoMes = todosOsDias(anoChart, mesChart);
     const dadosMes = dadosProdAno.filter(r=>parseInt(r.date.substring(5,7))===mesChart);
@@ -3324,10 +3378,12 @@ function renderProdutoAnalise(){
       </div>`;
   }
 
+  const prodLabelTitulo = isAllProd ? 'Todos os produtos' : (cProdValid?encodeHtml(cProdValid):'—');
+
   document.getElementById('produto-container').innerHTML = `
     <div class="filters" style="margin-bottom:20px">
       <div class="filter-group"><label>Produto</label>
-        <select id="p-produto" onchange="renderProdutoAnalise()" style="min-width:220px">${prodOpts}</select></div>
+        ${prodCombo}</div>
       <div class="filter-group"><label>Ano</label>
         <select id="p-ano" onchange="renderProdutoAnalise()">${anoOpts}</select></div>
       <div class="filter-group"><label>Mês</label>
@@ -3335,7 +3391,7 @@ function renderProdutoAnalise(){
       <div class="filter-group"><label>Processo</label>
         <select id="p-proc" onchange="renderProdutoAnalise()">${procOpts}</select></div>
       <div class="filter-group"><label>Máquina</label>
-        <select id="p-maq" onchange="renderProdutoAnalise()">${maqOptsP}</select></div>
+        ${maqCombo}</div>
       <div class="filter-group">
         <label>Ver por</label>
         <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
@@ -3350,7 +3406,135 @@ function renderProdutoAnalise(){
         </select>
       </div>
     </div>
-    <div class="section-title">Análise por Produto — ${cProdValid?encodeHtml(cProdValid):'—'} — ${MESES_FULL[mesChart-1]}/${anoChart}${cProcValid?` — ${encodeHtml(cProcValid)}`:''}${cMaqValid?` — ${encodeHtml(cMaqValid)}`:''}</div>
+    <div class="section-title">Análise por Produto — ${prodLabelTitulo} — ${MESES_FULL[mesChart-1]}/${anoChart}${cProcValid?` — ${encodeHtml(cProcValid)}`:''}${cMaqValid?` — ${encodeHtml(cMaqValid)}`:''}</div>
+    ${bodyHtml}
+  `;
+}
+
+// ===== FICHA TÉCNICA DE PRODUTO =====
+function renderFichaTecnica(){
+  if(rawData.length===0) return;
+
+  const cProd    = document.getElementById('ft-produto')  ? document.getElementById('ft-produto').value  : loadFilter('ficha','produto');
+  const cAno     = document.getElementById('ft-ano')      ? document.getElementById('ft-ano').value      : loadFilter('ficha','ano');
+  const cMes     = document.getElementById('ft-mes')      ? document.getElementById('ft-mes').value      : loadFilter('ficha','mes');
+  const cDataIni = document.getElementById('ft-data-ini') ? document.getElementById('ft-data-ini').value : loadFilter('ficha','dataIni');
+  const cDataFim = document.getElementById('ft-data-fim') ? document.getElementById('ft-data-fim').value : loadFilter('ficha','dataFim');
+  const cMetric  = document.getElementById('ft-metric')   ? document.getElementById('ft-metric').value   : (loadFilter('ficha','metric')||'kg');
+
+  const allProdutos = produtosOrdenadosPorProducao(rawData, cMetric);
+  const cProdValid = allProdutos.includes(cProd) ? cProd : '';
+  const usaIntervalo = !!(cDataIni || cDataFim);
+
+  saveFilter('ficha','produto',cProdValid);
+  saveFilter('ficha','ano',cAno||'');
+  saveFilter('ficha','mes',cMes||'');
+  saveFilter('ficha','dataIni',cDataIni||'');
+  saveFilter('ficha','dataFim',cDataFim||'');
+  saveFilter('ficha','metric',cMetric);
+
+  const metricKey = cMetric==='folhas' ? 'folhas' : 'kg';
+  const metricLabel = cMetric==='folhas' ? 'Folhas' : 'Kg';
+  const fmtMetric = cMetric==='folhas' ? (v=>Math.round(v).toLocaleString('pt-BR')) : fmtKg;
+
+  const anosDisp = [...new Set(rawData.map(r=>r.date.substring(0,4)))].sort();
+  const prodOptionsArr = [
+    {value:'', label:'Selecione um produto', selected: cProdValid===''},
+    ...allProdutos.map(p=>({value:p, label:p, selected:p===cProdValid}))
+  ];
+  const prodCombo = comboHtml('ft-produto', prodOptionsArr, 'renderFichaTecnica()', 'Buscar produto...', 240);
+  const anoOpts = '<option value="">Todos</option>'+anosDisp.map(a=>`<option value="${a}"${a===cAno?' selected':''}>${a}</option>`).join('');
+  const mesOpts = '<option value="">Todos</option>'+MESES_FULL.map((m,i)=>`<option value="${i+1}"${String(i+1)===cMes?' selected':''}>${m}</option>`).join('');
+
+  let bodyHtml, periodoLabel='';
+  if(!cProdValid){
+    bodyHtml = `<div class="empty" style="margin-top:20px"><p>Selecione um produto para ver a ficha técnica (operações utilizadas na sua produção).</p></div>`;
+  } else {
+    let dados = rawData.filter(r=>r.produto===cProdValid);
+    if(usaIntervalo){
+      if(cDataIni) dados = dados.filter(r=>r.date>=cDataIni);
+      if(cDataFim) dados = dados.filter(r=>r.date<=cDataFim);
+      periodoLabel = `${cDataIni?fmtDate(cDataIni):'início'} a ${cDataFim?fmtDate(cDataFim):'hoje'}`;
+    } else {
+      if(cAno) dados = dados.filter(r=>r.date.startsWith(cAno));
+      if(cMes) dados = dados.filter(r=>String(parseInt(r.date.substring(5,7)))===cMes);
+      periodoLabel = cAno ? `${cMes?MESES_FULL[parseInt(cMes)-1]+'/':''}${cAno}` : 'Todos os anos';
+    }
+
+    // agrupa por processo (operação da ficha técnica)
+    const byProc={};
+    dados.forEach(r=>{
+      const key = r.proc || '(sem processo)';
+      if(!byProc[key]) byProc[key]={horas:0, valor:0};
+      byProc[key].horas += (r.horas||0);
+      byProc[key].valor += (r[metricKey]||0);
+    });
+    const rows = Object.keys(byProc).sort((a,b)=>byProc[b].valor-byProc[a].valor).map(proc=>{
+      const agg=byProc[proc];
+      const media = agg.horas>0 ? agg.valor/agg.horas : 0;
+      return {proc, horas:agg.horas, valor:agg.valor, media};
+    });
+
+    const totalHoras = rows.reduce((s,r)=>s+r.horas,0);
+    const totalValor = rows.reduce((s,r)=>s+r.valor,0);
+    const mediaGeral = totalHoras>0 ? totalValor/totalHoras : 0;
+
+    bodyHtml = `
+      <div class="cards-grid" style="margin-bottom:16px">
+        <div class="card blue"><span class="card-label">Total ${metricLabel}</span><span class="card-value">${fmtMetric(totalValor)}</span><span class="card-sub">${periodoLabel}</span></div>
+        <div class="card"><span class="card-label">Total Horas</span><span class="card-value">${fmtKg(totalHoras)}</span><span class="card-sub">horas produzidas</span></div>
+        <div class="card yellow"><span class="card-label">Média/Hora</span><span class="card-value">${fmtMetric(mediaGeral)}</span><span class="card-sub">${metricLabel}/h</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Proc. Descrição</th><th>Total Horas</th><th>Total ${metricLabel}</th><th>Média ${metricLabel}/Hora</th>
+          </tr></thead>
+          <tbody>
+            ${rows.length===0 ? `<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">Nenhum lançamento no período</td></tr>` : rows.map(r=>`
+              <tr>
+                <td>${encodeHtml(r.proc)}</td>
+                <td>${r.horas>0?fmtKg(r.horas):'<span style="color:var(--text3)">—</span>'}</td>
+                <td>${r.valor>0?fmtMetric(r.valor):'<span style="color:var(--text3)">—</span>'}</td>
+                <td>${r.horas>0?fmtMetric(r.media):'<span style="color:var(--text3)">—</span>'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  document.getElementById('ficha-container').innerHTML = `
+    <div class="filters" style="margin-bottom:20px">
+      <div class="filter-group"><label>Produto</label>
+        ${prodCombo}</div>
+      <div class="filter-group"><label>Ano</label>
+        <select id="ft-ano" onchange="renderFichaTecnica()" ${usaIntervalo?'disabled':''} style="${usaIntervalo?'opacity:.5':''}">${anoOpts}</select></div>
+      <div class="filter-group"><label>Mês</label>
+        <select id="ft-mes" onchange="renderFichaTecnica()" ${usaIntervalo?'disabled':''} style="${usaIntervalo?'opacity:.5':''}">${mesOpts}</select></div>
+      <div class="filter-group"><label>De</label>
+        <input type="date" id="ft-data-ini" value="${cDataIni||''}" onchange="renderFichaTecnica()"
+          style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px"/></div>
+      <div class="filter-group"><label>Até</label>
+        <input type="date" id="ft-data-fim" value="${cDataFim||''}" onchange="renderFichaTecnica()"
+          style="padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px"/></div>
+      <div class="filter-group">
+        <label>Ver por</label>
+        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <button type="button" onclick="document.getElementById('ft-metric').value='kg';renderFichaTecnica()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:${cMetric!=='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric!=='folhas'?'#fff':'var(--text2)'}">Kg</button>
+          <button type="button" onclick="document.getElementById('ft-metric').value='folhas';renderFichaTecnica()"
+            style="padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;border:none;border-left:1px solid var(--border);background:${cMetric==='folhas'?'var(--accent2)':'var(--bg3)'};color:${cMetric==='folhas'?'#fff':'var(--text2)'}">Folhas</button>
+        </div>
+        <select id="ft-metric" style="display:none">
+          <option value="kg"${cMetric!=='folhas'?' selected':''}>kg</option>
+          <option value="folhas"${cMetric==='folhas'?' selected':''}>folhas</option>
+        </select>
+      </div>
+      ${usaIntervalo ? `<div class="filter-group"><label>&nbsp;</label>
+        <button type="button" onclick="document.getElementById('ft-data-ini').value='';document.getElementById('ft-data-fim').value='';renderFichaTecnica()"
+          style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">Limpar datas</button></div>` : ''}
+    </div>
+    <div class="section-title">Ficha Técnica — ${cProdValid?encodeHtml(cProdValid):'—'}${periodoLabel?` — ${periodoLabel}`:''}</div>
     ${bodyHtml}
   `;
 }
@@ -3659,6 +3843,93 @@ function toast(msg,type='success'){
   const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast '+type+' show';
   setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ===== TEMA (claro/escuro) =====
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  try{ localStorage.setItem('dash_theme', theme); }catch(e){}
+  document.querySelectorAll('.theme-icon').forEach(el=>{ el.textContent = theme==='light' ? '🌙' : '☀️'; });
+  document.querySelectorAll('.theme-label').forEach(el=>{ el.textContent = theme==='light' ? 'Tema escuro' : 'Tema claro'; });
+}
+function toggleTheme(){
+  const cur = document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark';
+  applyTheme(cur==='light' ? 'dark' : 'light');
+}
+(function initTheme(){
+  let saved='dark';
+  try{ saved = localStorage.getItem('dash_theme') || 'dark'; }catch(e){}
+  applyTheme(saved);
+})();
+
+// ===== COMBO (select com busca) =====
+function normalizeStr(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+}
+function comboOptions(baseId){
+  const sel=document.getElementById(baseId);
+  if(!sel) return [];
+  return [...sel.options].map(o=>({value:o.value, label:o.textContent}));
+}
+function comboRenderList(baseId, filterText){
+  const dd=document.getElementById(baseId+'-dropdown');
+  if(!dd) return;
+  const opts=comboOptions(baseId);
+  const ft=normalizeStr(filterText||'');
+  const filtered = ft ? opts.filter(o=>o.value!=='' && normalizeStr(o.label).includes(ft)) : opts.filter(o=>o.value!=='' || opts.length<=1);
+  if(filtered.length===0){
+    dd.innerHTML='<div class="combo-empty">Nenhum resultado</div>';
+  } else {
+    dd.innerHTML = filtered.slice(0,300).map(o=>
+      `<div class="combo-item" onmousedown="comboSelect('${baseId}','${o.value.replace(/'/g,"\\'")}')">${encodeHtml(o.label)}</div>`
+    ).join('');
+  }
+  dd.style.display='block';
+}
+function comboSelect(baseId, value){
+  const sel=document.getElementById(baseId);
+  const input=document.getElementById(baseId+'-input');
+  if(!sel || !input) return;
+  sel.value=value;
+  const opt=[...sel.options].find(o=>o.value===value);
+  input.value = opt ? opt.textContent : '';
+  const dd=document.getElementById(baseId+'-dropdown');
+  if(dd) dd.style.display='none';
+  sel.dispatchEvent(new Event('change'));
+}
+function comboFocus(baseId){
+  const input=document.getElementById(baseId+'-input');
+  if(input) input.select();
+  comboRenderList(baseId, '');
+}
+function comboInput(baseId){
+  const input=document.getElementById(baseId+'-input');
+  comboRenderList(baseId, input ? input.value : '');
+}
+function comboBlur(baseId){
+  setTimeout(()=>{
+    const dd=document.getElementById(baseId+'-dropdown');
+    if(dd) dd.style.display='none';
+    const sel=document.getElementById(baseId);
+    const input=document.getElementById(baseId+'-input');
+    if(sel && input){
+      const opt=[...sel.options].find(o=>o.value===sel.value);
+      input.value = opt ? opt.textContent : '';
+    }
+  }, 180);
+}
+// Gera o HTML de um combo (input com busca + select oculto com o valor real)
+function comboHtml(baseId, options, changeFn, placeholder, minWidth){
+  const opt = options.find(o=>o.selected);
+  const label = opt ? opt.label : '';
+  const selectOpts = options.map(o=>`<option value="${encodeHtml(o.value)}"${o.selected?' selected':''}>${encodeHtml(o.label)}</option>`).join('');
+  return `<div class="combo" style="${minWidth?`min-width:${minWidth}px`:''}">
+    <input type="text" class="combo-input" id="${baseId}-input" autocomplete="off" placeholder="${encodeHtml(placeholder||'')}"
+      value="${encodeHtml(label)}"
+      oninput="comboInput('${baseId}')" onfocus="comboFocus('${baseId}')" onblur="comboBlur('${baseId}')"/>
+    <div class="combo-dropdown" id="${baseId}-dropdown"></div>
+    <select id="${baseId}" style="display:none" onchange="${changeFn}">${selectOpts}</select>
+  </div>`;
 }
 </script>
 </body>
