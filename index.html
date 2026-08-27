@@ -94,7 +94,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .combo-input{width:100%;padding:8px 30px 8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;cursor:text;}
 .combo-input:focus{border-color:var(--accent);}
 .combo::after{content:'🔍';position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;pointer-events:none;opacity:.6;}
-.combo-dropdown{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:260px;overflow-y:auto;
+.combo-dropdown{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;width:max-content;max-width:min(560px,92vw);max-height:320px;overflow-y:auto;
   background:var(--bg3);border:1px solid var(--border);border-radius:8px;z-index:60;box-shadow:var(--shadow);}
 .combo-item{padding:8px 12px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
 .combo-item:hover,.combo-item.hl{background:var(--bg2);color:var(--accent);}
@@ -3433,7 +3433,7 @@ function renderProdutoAnalise(){
     {value: PROD_ALL, label:'— Todos os produtos —', selected: isAllProd},
     ...allProdutos.map(p=>({value:p, label:p, selected:p===cProdValid}))
   ];
-  const prodCombo = comboHtml('p-produto', prodOptionsArr, 'renderProdutoAnalise()', 'Buscar produto...', 240);
+  const prodCombo = comboHtml('p-produto', prodOptionsArr, 'renderProdutoAnalise()', 'Buscar produto...', 320);
   const anoOpts  = anosDisp.map(a=>`<option value="${a}"${a===anoChart?' selected':''}>${a}</option>`).join('');
   const mesOpts  = MESES_FULL.map((m,i)=>`<option value="${i+1}"${(i+1)===mesChart?' selected':''}>${m}</option>`).join('');
   const procOpts = '<option value="">Todos os processos</option>'+allProcessos.map(p=>`<option value="${encodeHtml(p)}"${p===cProcValid?' selected':''}>${p}</option>`).join('');
@@ -3565,7 +3565,7 @@ function renderFichaTecnica(){
     {value: PROD_ALL, label:'— Todos os produtos —', selected: isAllProd},
     ...allProdutos.map(p=>({value:p, label:p, selected:p===cProdValid}))
   ];
-  const prodCombo = comboHtml('ft-produto', prodOptionsArr, 'renderFichaTecnica()', 'Buscar produto...', 240);
+  const prodCombo = comboHtml('ft-produto', prodOptionsArr, 'renderFichaTecnica()', 'Buscar produto...', 320);
   const anoOpts = '<option value="">Todos</option>'+anosDisp.map(a=>`<option value="${a}"${a===cAno?' selected':''}>${a}</option>`).join('');
   const mesOpts = '<option value="">Todos</option>'+MESES_FULL.map((m,i)=>`<option value="${i+1}"${String(i+1)===cMes?' selected':''}>${m}</option>`).join('');
   const turnoOpts = `<option value="">Todos</option>
@@ -3812,8 +3812,9 @@ function processosDisponiveis(){
 async function carregarCronosSupabase(){
   try{
     const rows=await sbFetch('cronometragens','select=*&order=data.desc');
-    if(rows){
-      cronos=rows.map(r=>({
+    if(rows && rows.length>0){
+      // mescla: Supabase tem prioridade, mas preserva registros que só existem no localStorage
+      const doServidor=rows.map(r=>({
         id:r.id,
         produto:r.produto||'',
         data:r.data||'',
@@ -3822,8 +3823,14 @@ async function carregarCronosSupabase(){
         folhasHora: r.folhas_hora!=null ? parseFloat(r.folhas_hora) : null,
         kgHora: r.kg_hora!=null ? parseFloat(r.kg_hora) : null
       }));
+      const idsServidor=new Set(doServidor.map(c=>String(c.id)));
+      const somenteLocais=cronos.filter(c=>!idsServidor.has(String(c.id)));
+      cronos=[...doServidor,...somenteLocais];
       saveCronos();
+      // tenta re-sincronizar os que ficaram só no localStorage (auto-recuperação)
+      somenteLocais.forEach(c=>salvarCronoSupabase(c));
     }
+    // se rows vier vazio, NÃO sobrescreve o cache local (evita apagar lançamentos não sincronizados)
   }catch(e){ console.warn('Cronometragens Supabase erro:', e); }
   renderCronoList();
 }
@@ -3839,7 +3846,8 @@ async function salvarCronoSupabase(c){
       })
     });
     if(!r.ok) throw new Error(await r.text());
-  }catch(e){ console.warn('Erro ao salvar cronometragem no Supabase:', e); }
+    return true;
+  }catch(e){ console.warn('Erro ao salvar cronometragem no Supabase:', e); return false; }
 }
 
 async function deletarCronoSupabase(id){
@@ -3856,7 +3864,7 @@ function toggleCronoForm(show){
   if(open){
     const produtos=produtosOrdenadosPorProducao(rawData,'kg');
     const prodOptionsArr=[{value:'',label:'Selecione um produto',selected:true},...produtos.map(p=>({value:p,label:p,selected:false}))];
-    document.getElementById('crono-produto-wrap').innerHTML=comboHtml('c-produto',prodOptionsArr,'','Buscar produto...',260);
+    document.getElementById('crono-produto-wrap').innerHTML=comboHtml('c-produto',prodOptionsArr,'','Buscar produto...',320);
     const procOpts='<option value="">Selecione um processo</option>'+processosDisponiveis().map(p=>`<option value="${encodeHtml(p)}">${p}</option>`).join('');
     document.getElementById('c-proc').innerHTML=procOpts;
     document.getElementById('c-data').value='';
@@ -3866,7 +3874,7 @@ function toggleCronoForm(show){
   }
 }
 
-function salvarCrono(){
+async function salvarCrono(){
   const produtoEl=document.getElementById('c-produto');
   const produto=produtoEl?produtoEl.value:'';
   const data=document.getElementById('c-data').value;
@@ -3887,10 +3895,14 @@ function salvarCrono(){
   const novo={ id, produto, data, processo, pessoas, folhasHora: isNaN(folhasHora)?null:folhasHora, kgHora: isNaN(kgHora)?null:kgHora };
   cronos.push(novo);
   saveCronos();
-  salvarCronoSupabase(novo);
   renderCronoList();
   toggleCronoForm(false);
-  toast('Cronometragem salva!','success');
+  const ok=await salvarCronoSupabase(novo);
+  if(ok){
+    toast('Cronometragem salva!','success');
+  }else{
+    toast('Salva localmente, mas NÃO gravou no servidor. Verifique a tabela/permissões no Supabase.','error');
+  }
 }
 
 function deleteCrono(id){
@@ -3927,7 +3939,7 @@ function popularFiltrosCrono(){
   const curProdSel=document.getElementById('cf-produto')?document.getElementById('cf-produto').value:'';
   const produtosUsados=[...new Set(cronos.map(c=>c.produto).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const prodOptionsArr=[{value:'',label:'Todos os produtos',selected:curProdSel===''},...produtosUsados.map(p=>({value:p,label:p,selected:p===curProdSel}))];
-  document.getElementById('cf-produto-wrap').innerHTML=comboHtml('cf-produto',prodOptionsArr,'renderCronoList()','Buscar produto...',220);
+  document.getElementById('cf-produto-wrap').innerHTML=comboHtml('cf-produto',prodOptionsArr,'renderCronoList()','Buscar produto...',320);
 }
 
 function renderCronoList(){
