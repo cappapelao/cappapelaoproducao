@@ -877,7 +877,18 @@ td.sem-prod{color:var(--text3);}
   <div class="page" id="page-cronometragem">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
       <div class="section-title" style="margin:0">Lançamento de Cronometragens</div>
-      <button class="btn-save" style="margin-top:0;width:auto" onclick="toggleCronoForm()" id="btn-toggle-crono-form">+ Nova Cronometragem</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select id="crono-orientacao" title="Orientação do PDF"
+          style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">
+          <option value="portrait">Retrato</option>
+          <option value="landscape">Paisagem</option>
+        </select>
+        <button type="button" onclick="imprimirCrono()"
+          style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">🖨️ Imprimir PDF</button>
+        <button type="button" onclick="backupCronos()"
+          style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer">💾 Backup</button>
+        <button class="btn-save" style="margin-top:0;width:auto" onclick="toggleCronoForm()" id="btn-toggle-crono-form">+ Nova Cronometragem</button>
+      </div>
     </div>
 
     <div class="meta-form" id="crono-form-wrap" style="display:none;margin-bottom:24px;max-width:640px">
@@ -3798,6 +3809,7 @@ function renderVinculos(){
 
 // ===== CRONOMETRAGEM (lançamento manual) =====
 let cronos=[]; // {id, produto, data(YYYY-MM-DD), processo, pessoas, folhasHora, kgHora}
+let _cronoSort={ col:'data', dir:-1 }; // ordenação da tabela (dir: 1=asc, -1=desc)
 function loadCronos(){try{const s=localStorage.getItem('prod_cronos');if(s)cronos=JSON.parse(s);}catch(e){}}
 function saveCronos(){localStorage.setItem('prod_cronos',JSON.stringify(cronos));}
 loadCronos();
@@ -3949,14 +3961,14 @@ function renderCronoList(){
   const fMes=document.getElementById('cf-mes')?.value||'';
   const fProc=document.getElementById('cf-proc')?.value||'';
 
-  let lista=cronos.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-  lista=lista.filter(c=>{
+  let lista=cronos.filter(c=>{
     if(fProduto && c.produto!==fProduto) return false;
     if(fAno && (c.data||'').substring(0,4)!==fAno) return false;
     if(fMes && parseInt((c.data||'').substring(5,7))!==parseInt(fMes)) return false;
     if(fProc && c.processo!==fProc) return false;
     return true;
   });
+  lista=ordenarCronos(lista);
 
   const cont=document.getElementById('crono-list');
   if(!cont) return;
@@ -3969,12 +3981,18 @@ function renderCronoList(){
     return;
   }
 
+  const th=(col,label)=>{
+    const ativa=_cronoSort.col===col;
+    const seta=ativa?(_cronoSort.dir===1?' ▲':' ▼'):'';
+    const cor=ativa?';color:#1f6feb':'';
+    return `<th onclick="sortCrono('${col}')" style="cursor:pointer;user-select:none${cor}">${label}${seta}</th>`;
+  };
   cont.innerHTML=`
     <div class="section-title">Cronometragens Lançadas (${lista.length})</div>
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Data</th><th>Produto</th><th>Processo</th><th>Nº Pessoas</th><th>Folhas/Hora</th><th>Kg/Hora</th><th></th>
+          ${th('data','Data')}${th('produto','Produto')}${th('processo','Processo')}${th('pessoas','Nº Pessoas')}${th('folhasHora','Folhas/Hora')}${th('kgHora','Kg/Hora')}<th></th>
         </tr></thead>
         <tbody>
           ${lista.map(c=>`
@@ -3990,6 +4008,90 @@ function renderCronoList(){
         </tbody>
       </table>
     </div>`;
+}
+
+function ordenarCronos(lista){
+  const col=_cronoSort.col, dir=_cronoSort.dir;
+  const numericas=['pessoas','folhasHora','kgHora'];
+  return lista.slice().sort((a,b)=>{
+    let va=a[col], vb=b[col];
+    let cmp;
+    if(numericas.includes(col)){
+      va = va==null ? -Infinity : va;
+      vb = vb==null ? -Infinity : vb;
+      cmp = va - vb;
+    } else {
+      cmp = String(va||'').localeCompare(String(vb||''),'pt-BR');
+    }
+    if(cmp===0) cmp=String(a.data||'').localeCompare(String(b.data||''));
+    return cmp*dir;
+  });
+}
+
+function sortCrono(col){
+  if(_cronoSort.col===col){ _cronoSort.dir*=-1; }
+  else { _cronoSort={ col, dir: col==='data' ? -1 : 1 }; }
+  renderCronoList();
+}
+
+function imprimirCrono(){
+  const orientacao=(document.getElementById('crono-orientacao')?.value)||'portrait';
+  const cont=document.getElementById('crono-list');
+  const tabela=cont?cont.querySelector('table'):null;
+  if(!tabela){ toast('Nenhuma cronometragem para imprimir.','error'); return; }
+  // clona a tabela sem a coluna de ação (última) e sem as setas de ordenação
+  const clone=tabela.cloneNode(true);
+  clone.querySelectorAll('tr').forEach(tr=>{ const c=tr.querySelector('td:last-child, th:last-child'); if(c) c.remove(); });
+  clone.querySelectorAll('th').forEach(th=>{ th.innerHTML=th.textContent.replace(/[▲▼]\s*$/,'').trim(); });
+
+  const fProduto=document.getElementById('cf-produto')?.value||'';
+  const fAno=document.getElementById('cf-ano')?.value||'';
+  const fMesEl=document.getElementById('cf-mes');
+  const fMes=fMesEl?(fMesEl.options[fMesEl.selectedIndex]?.text||''):'';
+  const fProc=document.getElementById('cf-proc')?.value||'';
+  const filtros=[fProduto&&('Produto: '+fProduto),fAno&&('Ano: '+fAno),(fMes&&fMes!=='Todos')&&('Mês: '+fMes),fProc&&('Processo: '+fProc)].filter(Boolean).join(' | ')||'Todos os registros';
+
+  const logoSrc=document.querySelector('.login-logo img')?.src||'';
+  const dataEmissao=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Estudo de Cronometragem Industrial</title><style>
+    @page{size:${orientacao};margin:12mm;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#fff;color:#1a1a2e;padding:30px;}
+    .header{text-align:center;margin-bottom:24px;border-bottom:3px solid #1f6feb;padding-bottom:16px;}
+    .header img{height:60px;margin-bottom:8px;}
+    .header h1{font-size:20px;font-weight:700;color:#1f6feb;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+    .header h2{font-size:13px;color:#444;font-weight:400;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    thead tr{background:#1f6feb;color:#fff;}
+    thead th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;}
+    tbody tr:nth-child(even){background:#f0f4ff;}
+    tbody td{padding:7px 12px;border-bottom:1px solid #e5e7eb;}
+    .footer{margin-top:26px;border-top:2px solid #e5e7eb;padding-top:12px;text-align:center;font-size:11px;color:#888;}
+    @media print{body{padding:15px;}button{display:none;}}
+  </style></head><body>
+    <div class="header">
+      ${logoSrc?`<img src="${logoSrc}" alt="Logo"/><br/>`:''}
+      <h1>Estudo de Cronometragem Industrial</h1>
+      <h2>${filtros}</h2>
+    </div>
+    ${clone.outerHTML}
+    <div class="footer">Emitido em: ${dataEmissao} — Timbó Papéis Especiais</div>
+    <script>setTimeout(()=>{window.print();},400);<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+function backupCronos(){
+  if(!cronos || cronos.length===0){ toast('Nenhuma cronometragem para backup.','error'); return; }
+  const backup={ tipo:'cronometragens', geradoEm:new Date().toISOString(), total:cronos.length, cronometragens:cronos };
+  const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const ts=new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`backup_cronometragens_${ts}.json`; a.click();
+  URL.revokeObjectURL(url);
+  toast('Backup gerado!','success');
 }
 
 // ===== USUÁRIOS E PERMISSÕES =====
